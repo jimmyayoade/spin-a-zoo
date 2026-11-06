@@ -35,6 +35,38 @@ Then it's the next player's turn, clockwise.
 
 **No winner:** if every square has a tile and nobody has won, PLAY AGAIN! A player with no tiles left skips their turns; if nobody has tiles left, play again.
 
+## Controls
+
+| Pad | Keyboard | What it does |
+|---|---|---|
+| A | A or Enter | Spin, place a tile, choose |
+| B | B or Backspace | Back; on the setup screen, leave a seat |
+| D-pad / left stick | Arrow keys | Move |
+| Start | Esc | Pause menu |
+| Hotkey + Start | Alt+F4 | Exit to EmulationStation |
+
+A mouse or touch screen works too: tap your spinner to spin, then tap a square.
+
+On Batocera, `spinazoo.pygame.keys` turns every pad (players 1–4) into those keys, using the button mapping set up in EmulationStation, so any player can pick up a pad on their turn.
+
+## Playing it on Batocera
+
+Copy the `spinazoo` folder to `/userdata/roms/pygame/spinazoo/` and update the game list. It shows up under **Pygame**.
+
+## Running it on a computer
+
+Needs Python 3.12 and pygame 2.5 or newer (Batocera 42 ships 2.5.2, newer builds 2.6.1):
+
+```
+uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python pygame==2.6.1
+tools/run-local.sh            # 1280x720 window; SPINAZOO_WINDOW=1920x1080 for another size
+python3 -m unittest discover -s tests
+```
+
+## Your own animal pictures
+
+Put a PNG named `shepherd.png`, `cat.png`, `eagle.png`, `lion.png` or `bear.png` in `spinazoo/art/` and it replaces that animal's drawing everywhere.
+
 ## License
 
 MIT

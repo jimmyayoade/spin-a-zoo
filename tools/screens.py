@@ -49,3 +49,23 @@ gm.turn = 3
 gm.resolve(rules.WILD)
 g.try_place(1, 3, 0.0)
 shot("3-win", g, 1.0)
+
+# 4. menus
+import app  # noqa: E402
+
+a = app.App(screen)
+for name, make in (("4-title", lambda: app.Title(a)), ("5-setup", lambda: app.Setup(a)),
+                   ("6-howto", lambda: app.HowToPlay(a))):
+    a.replace_all(make())
+    if name == "5-setup":
+        a.scene.players = [("red", "BR"), ("green", "TL"), ("yellow", "BL")]
+        a.scene.focus = "TR"
+    a.frame([], 1.0)
+    pygame.image.save(screen, str(out / f"{name}.png"))
+    print(out / f"{name}.png")
+play = app.Play(a, [("green", "TL"), ("blue", "TR")])
+a.replace_all(play)
+a.push(app.Pause(a, play))
+a.frame([], 1.0)
+pygame.image.save(screen, str(out / "7-pause.png"))
+print(out / "7-pause.png")

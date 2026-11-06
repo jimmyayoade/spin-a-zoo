@@ -4,6 +4,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import game  # noqa: E402
+import app  # noqa: E402
 
-game.main()
+app.main()

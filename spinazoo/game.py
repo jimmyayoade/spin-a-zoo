@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import os
 import random
 
 import pygame
@@ -24,7 +23,7 @@ DROP_TIME = 0.25
 MESSAGE_TIME = 1.4
 
 # Inputs the screen understands (keyboard and pads both map onto these).
-LEFT, RIGHT, UP, DOWN, OK, BACK = "left", "right", "up", "down", "ok", "back"
+LEFT, RIGHT, UP, DOWN, OK, BACK, MENU = "left", "right", "up", "down", "ok", "back", "menu"
 
 
 def ease_out_cubic(t: float) -> float:
@@ -412,49 +411,3 @@ class GameScreen:
         self.screen.blit(ti, ti.get_rect(midtop=(box.centerx, box.top + L.margin // 2)))
         if si:
             self.screen.blit(si, si.get_rect(midbottom=(box.centerx, box.bottom - L.margin // 2)))
-
-
-KEYS = {
-    pygame.K_LEFT: LEFT, pygame.K_RIGHT: RIGHT, pygame.K_UP: UP, pygame.K_DOWN: DOWN,
-    pygame.K_RETURN: OK, pygame.K_SPACE: OK, pygame.K_a: OK,
-    pygame.K_ESCAPE: BACK,
-}
-
-
-def parse_players(text: str) -> list[tuple[str, str]]:
-    """"green:TL,blue:BR" -> [("green", "TL"), ("blue", "BR")]"""
-    return [tuple(part.split(":", 1)) for part in text.split(",") if part]
-
-
-def main() -> None:
-    pygame.init()
-    window = os.environ.get("SPINAZOO_WINDOW")
-    if window:
-        w, h = (int(v) for v in window.lower().split("x"))
-        screen = pygame.display.set_mode((w, h))
-    else:
-        screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-    pygame.display.set_caption("Spin-a-Zoo")
-    pygame.mouse.set_visible(bool(window))
-    setup = parse_players(os.environ.get("SPINAZOO_PLAYERS", "green:TL,blue:TR,yellow:BR,red:BL"))
-    game = GameScreen(screen, setup)
-    clock = pygame.time.Clock()
-    while True:
-        now = pygame.time.get_ticks() / 1000
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_F4 and event.mod & pygame.KMOD_ALT:
-                    return
-                action = KEYS.get(event.key)
-                if action == BACK:
-                    return  # pause menu comes in step 3
-                if action:
-                    game.handle(action, now)
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                game.click(event.pos, now)
-        game.update(now)
-        game.draw(now)
-        pygame.display.flip()
-        clock.tick(60)
