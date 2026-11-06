@@ -1,4 +1,4 @@
-"""Spin-a-Zoo rules engine.
+"""Spin-A-Zoo! rules engine.
 
 Pure Python with no pygame, so the rules can be tested anywhere. Batocera v42
 ships Python 3.12, so nothing here needs anything newer.
@@ -21,7 +21,7 @@ VALUES = {
     "color": ("green", "blue", "purple", "red", "yellow"),
     "shape": ("square", "star", "circle", "triangle", "hexagon"),
     "pattern": ("notes", "stripes", "dots", "zigzag", "leaves"),
-    "animal": ("shepherd", "cat", "eagle", "lion", "bear"),
+    "animal": ("elephant", "cat", "eagle", "lion", "bear"),
 }
 LABELS = {
     "color": "Color", "shape": "Shape", "pattern": "Pattern", "animal": "Animal",
@@ -31,7 +31,7 @@ LABELS = {
     "triangle": "Triangle", "hexagon": "Hexagon",
     "notes": "Musical notes", "stripes": "Stripes", "dots": "Polka dots",
     "zigzag": "Zigzag", "leaves": "Leaves",
-    "shepherd": "German shepherd", "cat": "Tuxedo cat", "eagle": "Eagle",
+    "elephant": "Elephant", "cat": "Tuxedo cat", "eagle": "Eagle",
     "lion": "Lion", "bear": "Bear",
 }
 
@@ -44,7 +44,7 @@ SEAT_LABELS = {"TL": "Top left", "TR": "Top right", "BR": "Bottom right", "BL": 
 START_SPINNERS = {"TL": "color", "TR": "shape", "BR": "pattern", "BL": "animal"}
 
 WILD = "wild"
-ZOO = "zoo"  # the "Spin A Zoo!" section
+ZOO = "zoo"  # the "Spin-A-Zoo!" section
 
 # Phases of a turn.
 SPIN = "spin"      # current player must spin
@@ -56,7 +56,7 @@ DRAW = "draw"      # board full or nobody has tiles: play again
 def spinner_sections(feature: str) -> tuple[str, ...]:
     """The 8 sections of a spinner, in order around the dial.
 
-    5 values, 2 Wild and 1 Spin A Zoo!, spaced out so the specials don't sit
+    5 values, 2 Wild and 1 Spin-A-Zoo!, spaced out so the specials don't sit
     next to each other.
     """
     v = VALUES[feature]
@@ -132,7 +132,7 @@ class Player:
 
 @dataclass
 class Game:
-    """One round of Spin-a-Zoo.
+    """One round of Spin-A-Zoo!
 
     players: (tile color, seat) pairs, 2 to 4 of them. Play goes clockwise by
     seat, starting from the first player given.
@@ -152,7 +152,7 @@ class Game:
     @classmethod
     def new(cls, setup: list[tuple[str, str]], rng: random.Random | None = None) -> Game:
         if not 2 <= len(setup) <= 4:
-            raise ValueError("Spin-a-Zoo needs 2 to 4 players")
+            raise ValueError("Spin-A-Zoo! needs 2 to 4 players")
         colors = [c for c, _ in setup]
         seats = [s for _, s in setup]
         if len(set(colors)) != len(colors) or not set(colors) <= set(PLAYER_COLORS):

@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SPINAZOO_SILENT", "1")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "spinazoo"))
 
 import pygame  # noqa: E402
@@ -57,6 +58,11 @@ a = app.App(screen)
 for name, make in (("4-title", lambda: app.Title(a)), ("5-setup", lambda: app.Setup(a)),
                    ("6-howto", lambda: app.HowToPlay(a))):
     a.replace_all(make())
+    if name == "6-howto":
+        a.push(app.Options(a))
+        a.frame([], 1.0)
+        pygame.image.save(screen, str(out / "6b-options.png"))
+        a.pop()
     if name == "5-setup":
         a.scene.players = [("red", "BR"), ("green", "TL"), ("yellow", "BL")]
         a.scene.focus = "TR"
@@ -69,3 +75,15 @@ a.push(app.Pause(a, play))
 a.frame([], 1.0)
 pygame.image.save(screen, str(out / "7-pause.png"))
 print(out / "7-pause.png")
+
+# 8. win with confetti, a moment after the winning tile
+g = game.GameScreen(screen, [("green", "TL"), ("blue", "TR"), ("yellow", "BR"), ("red", "BL")], seed=8)
+gm = g.game
+for c in range(3):
+    gm.stacks[2][c + 1].append(1)
+gm.turn = 1
+gm.resolve(rules.WILD)
+g.try_place(2, 4, 0.0)
+for i in range(1, 50):
+    g.update(i / 60)
+shot("8-confetti", g, 50 / 60)

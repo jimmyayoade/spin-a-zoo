@@ -1,4 +1,4 @@
-# Spin-a-Zoo
+# Spin-A-Zoo!
 
 A spin-and-match board game for 2–4 players, made for [Batocera](https://batocera.org)'s Pygame system.
 
@@ -15,11 +15,11 @@ The board is a 5×5 grid. Every square has a color, a pattern, a shape and an an
 | Color | green, blue, purple, red, yellow |
 | Shape | square, star, circle, triangle, hexagon |
 | Pattern | musical notes, stripes, polka dots, zigzag, leaves |
-| Animal | German shepherd, tuxedo cat, eagle, lion, bear |
+| Animal | elephant, tuxedo cat, eagle, lion, bear |
 
 Each value appears once in every row and every column, and no two squares share the same pair of features.
 
-Each spinner has 8 sections: its 5 values, 2 **Wild** and 1 **Spin A Zoo!**
+Each spinner has 8 sections: its 5 values, 2 **Wild** and 1 **Spin-A-Zoo!**
 
 **On your turn, spin:**
 
@@ -27,7 +27,7 @@ Each spinner has 8 sections: its 5 values, 2 **Wild** and 1 **Spin A Zoo!**
 |---|---|
 | A value | Play a tile on an **empty** square that matches. If no empty square matches, play on any empty square. You can't play on a square that already has a tile. |
 | **Wild** | Play on any square, even on top of another tile, as long as the stack has fewer than 4. |
-| **Spin A Zoo!** | Everyone passes their spinner clockwise: top left → top right → bottom right → bottom left (including the empty seats' spinners), then you spin again. |
+| **Spin-A-Zoo!** | Everyone passes their spinner clockwise: top left → top right → bottom right → bottom left (including the empty seats' spinners), then you spin again. |
 
 Then it's the next player's turn, clockwise.
 
@@ -39,15 +39,19 @@ Then it's the next player's turn, clockwise.
 
 | Pad | Keyboard | What it does |
 |---|---|---|
-| A | A or Enter | Spin, place a tile, choose |
-| B | B or Backspace | Back; on the setup screen, leave a seat |
+| A (south button) | A or Enter | Spin, place a tile, choose |
+| B (east button) | B or Backspace | Back; on the setup screen, leave a seat |
 | D-pad / left stick | Arrow keys | Move |
 | Start | Esc | Pause menu |
 | Hotkey + Start | Alt+F4 | Exit to EmulationStation |
 
-A mouse or touch screen works too: tap your spinner to spin, then tap a square.
+**Options > A button** swaps the pad buttons, so the east (right-hand) button confirms instead. A mouse or touch screen works too: tap your spinner to spin, then tap a square.
 
-On Batocera, `spinazoo.pygame.keys` turns every pad (players 1–4) into those keys, using the button mapping set up in EmulationStation, so any player can pick up a pad on their turn.
+On Batocera, `spinazoo.pygame.keys` turns every pad (players 1–4) into keys, using the button mapping set up in EmulationStation, so any player can pick up a pad on their turn.
+
+## Options
+
+Theme (Night, Jungle, Ocean, Daylight), sound effects, music, and which pad button confirms. They're saved in `settings.json` next to the game, with the last players.
 
 ## Playing it on Batocera
 
@@ -63,9 +67,12 @@ tools/run-local.sh            # 1280x720 window; SPINAZOO_WINDOW=1920x1080 for a
 python3 -m unittest discover -s tests
 ```
 
-## Your own animal pictures
+## Your own pictures and sounds
 
-Put a PNG named `shepherd.png`, `cat.png`, `eagle.png`, `lion.png` or `bear.png` in `spinazoo/art/` and it replaces that animal's drawing everywhere.
+Everything is drawn and synthesised in code, so the game needs no image or sound files. You can still swap in your own:
+
+- **Pictures:** a PNG named `elephant.png`, `cat.png`, `eagle.png`, `lion.png` or `bear.png` in `spinazoo/art/` replaces that animal's drawing everywhere.
+- **Sounds:** an `.ogg` or `.wav` in `spinazoo/sounds/` named after an effect replaces it: `lion`, `cat`, `eagle`, `bear`, `elephant` (animal results), `color`, `shape`, `pattern`, `wild`, `zoo`, `any`, `spin`, `tick`, `stop`, `place`, `bonk`, `turn`, `win`, `draw`, `blip`, `select`, `back`. `music.ogg` replaces the music.
 
 ## License
 

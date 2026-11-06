@@ -1,4 +1,4 @@
-# Spin-a-Zoo: launched by Batocera's Pygame system (python spinazoo.pygame).
+# Spin-A-Zoo!: launched by Batocera's Pygame system (python spinazoo.pygame).
 import os
 import sys
 

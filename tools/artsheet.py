@@ -14,7 +14,7 @@ import art  # noqa: E402
 import rules  # noqa: E402
 
 out = sys.argv[1] if len(sys.argv) > 1 else "artsheet.png"
-sheet = pygame.Surface((1500, 1000))
+sheet = pygame.Surface((1500, 800))
 sheet.fill((250, 246, 238))
 x = 20
 for i, a in enumerate(rules.VALUES["animal"]):
@@ -26,7 +26,7 @@ for i, c in enumerate(rules.PLAYER_COLORS):
 for i, f in enumerate(rules.FEATURES):
     d = art.dial(f, 340)
     sheet.blit(d, (20 + i * 370, 430))
-    art.draw_arrow(sheet, 20 + i * 370 + 170, 430 + 170, 340, 30 + i * 70)
+    art.draw_arrow(sheet, 20 + i * 370 + 170, 430 + 170, 340, 30 + i * 70, art.SPINNER_STYLE[f]["arrow"])
 for i, sq in enumerate([rules.Square("yellow", "star", "notes", "eagle"), rules.Square("purple", "triangle", "leaves", "bear")]):
     s = art.square(sq, 180).copy()
     s.blit(art.tile(rules.PLAYER_COLORS[i + 2], 140), (20, 20))

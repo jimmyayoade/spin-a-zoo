@@ -57,17 +57,17 @@
       ]
     },
     {
-      "trigger": "a",
-      "type": "key",
-      "target": [
-        "KEY_A"
-      ]
-    },
-    {
       "trigger": "b",
       "type": "key",
       "target": [
-        "KEY_B"
+        "KEY_J"
+      ]
+    },
+    {
+      "trigger": "a",
+      "type": "key",
+      "target": [
+        "KEY_K"
       ]
     },
     {
@@ -136,17 +136,17 @@
       ]
     },
     {
-      "trigger": "a",
-      "type": "key",
-      "target": [
-        "KEY_A"
-      ]
-    },
-    {
       "trigger": "b",
       "type": "key",
       "target": [
-        "KEY_B"
+        "KEY_J"
+      ]
+    },
+    {
+      "trigger": "a",
+      "type": "key",
+      "target": [
+        "KEY_K"
       ]
     },
     {
@@ -215,17 +215,17 @@
       ]
     },
     {
-      "trigger": "a",
-      "type": "key",
-      "target": [
-        "KEY_A"
-      ]
-    },
-    {
       "trigger": "b",
       "type": "key",
       "target": [
-        "KEY_B"
+        "KEY_J"
+      ]
+    },
+    {
+      "trigger": "a",
+      "type": "key",
+      "target": [
+        "KEY_K"
       ]
     },
     {
@@ -294,17 +294,17 @@
       ]
     },
     {
-      "trigger": "a",
-      "type": "key",
-      "target": [
-        "KEY_A"
-      ]
-    },
-    {
       "trigger": "b",
       "type": "key",
       "target": [
-        "KEY_B"
+        "KEY_J"
+      ]
+    },
+    {
+      "trigger": "a",
+      "type": "key",
+      "target": [
+        "KEY_K"
       ]
     },
     {

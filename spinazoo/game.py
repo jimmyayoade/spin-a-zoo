@@ -1,4 +1,4 @@
-"""Spin-a-Zoo game screen: layout, drawing, animation and turn flow."""
+"""Spin-A-Zoo! game screen: layout, drawing, animation and turn flow."""
 
 from __future__ import annotations
 
@@ -9,18 +9,19 @@ import pygame
 
 import art
 import rules
+import theme
 from rules import DRAW, PLACE, SPIN, WILD, WON, ZOO
 
-BG = (250, 244, 232)
 BOARD_FRAME = (58, 112, 72)
-CARD = (255, 251, 243)
-CARD_IDLE = (238, 231, 220)
+CARD = (255, 251, 243)   # message banners stay light on every theme
 GOLD = (255, 200, 40)
 
+WINDUP_TIME = 0.18       # arrow pulls back before it spins
 SPIN_TIME = 2.0
 PASS_TIME = 0.9
-DROP_TIME = 0.25
-MESSAGE_TIME = 1.4
+DROP_TIME = 0.35
+MESSAGE_TIME = 1.5
+RIPPLE_STEP = 0.035      # delay between squares lighting up after a spin
 
 # Inputs the screen understands (keyboard and pads both map onto these).
 LEFT, RIGHT, UP, DOWN, OK, BACK, MENU = "left", "right", "up", "down", "ok", "back", "menu"
@@ -32,6 +33,11 @@ def ease_out_cubic(t: float) -> float:
 
 def ease_in_out(t: float) -> float:
     return t * t * (3 - 2 * t)
+
+
+def ease_out_back(t: float) -> float:
+    c = 1.9
+    return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2
 
 
 class Layout:
@@ -83,12 +89,52 @@ class Anim:
         return now - self.start >= self.duration
 
 
+def star_points(cx, cy, r):
+    pts = []
+    for i in range(10):
+        a = math.radians(-90 + i * 36)
+        rad = r if i % 2 == 0 else r * 0.45
+        pts.append((cx + rad * math.cos(a), cy + rad * math.sin(a)))
+    return pts
+
+
+def result_icon(feature: str, section: str, size: int) -> pygame.Surface:
+    """A picture of a spin result, for players who can't read yet."""
+    if section == ZOO:
+        return art.dial(feature, size)
+    s = pygame.Surface((size, size), pygame.SRCALPHA)
+    c = size / 2
+    if section == WILD:
+        colors = list(art.SQUARE_COLORS.values())
+        for i, col in enumerate(colors):
+            a0, a1 = i * 72 - 90, (i + 1) * 72 - 90
+            pts = [(c, c)] + [(c + c * 0.95 * math.cos(math.radians(a0 + (a1 - a0) * k / 8)),
+                               c + c * 0.95 * math.sin(math.radians(a0 + (a1 - a0) * k / 8))) for k in range(9)]
+            pygame.draw.polygon(s, col, pts)
+        pygame.draw.circle(s, art.INK, (c, c), c * 0.95, max(2, size // 30))
+        pygame.draw.polygon(s, art.WHITE, star_points(c, c, c * 0.62))
+        pygame.draw.polygon(s, art.INK, star_points(c, c, c * 0.62), max(2, size // 40))
+        return s
+    if feature == "color":
+        pygame.draw.circle(s, art.SQUARE_COLORS[section], (c, c), c * 0.9)
+        pygame.draw.circle(s, art.INK, (c, c), c * 0.9, max(2, size // 30))
+        return s
+    if feature == "shape":
+        return art.shape_icon(section, size)
+    if feature == "pattern":
+        return art.pattern_swatch(section, size)
+    return art.animal(section, size)
+
+
 class GameScreen:
-    def __init__(self, screen: pygame.Surface, setup: list[tuple[str, str]], seed: int | None = None):
+    def __init__(self, screen: pygame.Surface, setup: list[tuple[str, str]], seed: int | None = None,
+                 sfx=None):
         self.screen = screen
         self.setup = setup
+        self.sfx = sfx or (lambda name: None)  # play a sound by name
         self.layout = Layout(*screen.get_size())
         self.rng = random.Random(seed)
+        self.wins: dict[str, int] = {color: 0 for color, _ in setup}  # across rounds
         self.new_round()
 
     # --- round state -----------------------------------------------------
@@ -101,10 +147,17 @@ class GameScreen:
         self.spin_anim: Anim | None = None
         self.spin_from = self.spin_to = 0.0
         self.spin_section: str | None = None
+        self.spin_index = 0
+        self.landed: tuple[str, int, float] | None = None  # feature, section, when
+        self.reveal_time = -1.0
         self.pass_anim: Anim | None = None
         self.drop: tuple[int, int, Anim] | None = None
-        self.message: tuple[str, str, float] | None = None
+        self.message: tuple[str, str, float, pygame.Surface | None] | None = None
         self.hint_until = 0.0
+        self.tick_section: int | None = None
+        self.queued: list[tuple[float, str]] = []  # (time, sound)
+        self.confetti: list[list] = []
+        self.last_update: float | None = None
 
     def _render_board(self) -> pygame.Surface:
         L = self.layout
@@ -116,13 +169,21 @@ class GameScreen:
             for c in range(rules.SIZE):
                 rect = L.cells[r][c].move(-L.board.x, -L.board.y)
                 s.blit(art.square(self.game.board[r][c], L.cell), rect)
-        return s
+        return art.fast(s)
 
     def busy(self) -> bool:
         return bool(self.spin_anim or self.pass_anim or self.drop)
 
-    def say(self, title: str, sub: str = "", now: float = 0.0, forever: bool = False) -> None:
-        self.message = (title, sub, math.inf if forever else now + MESSAGE_TIME)
+    def animating(self) -> bool:
+        """Anything moving on screen (decides the frame rate)."""
+        return self.busy() or bool(self.confetti) or self.game.phase == WON
+
+    def later(self, delay: float, name: str, now: float) -> None:
+        self.queued.append((now + delay, name))
+
+    def say(self, title: str, sub: str = "", now: float = 0.0, forever: bool = False,
+            icon: pygame.Surface | None = None) -> None:
+        self.message = (title, sub, math.inf if forever else now + MESSAGE_TIME, icon)
 
     # --- input -----------------------------------------------------------
 
@@ -130,6 +191,7 @@ class GameScreen:
         g = self.game
         if g.phase in (WON, DRAW):
             if action == OK and not self.busy():
+                self.sfx("select")
                 self.new_round()
             return
         if self.busy():
@@ -141,6 +203,7 @@ class GameScreen:
             if action in (LEFT, RIGHT, UP, DOWN):
                 dr, dc = {LEFT: (0, -1), RIGHT: (0, 1), UP: (-1, 0), DOWN: (1, 0)}[action]
                 self.cursor = ((r + dr) % rules.SIZE, (c + dc) % rules.SIZE)
+                self.sfx("blip")
             elif action == OK:
                 self.try_place(r, c, now)
 
@@ -162,6 +225,7 @@ class GameScreen:
     def start_spin(self, now: float) -> None:
         sections = rules.spinner_sections(self.game.spinner)
         idx = self.rng.randrange(len(sections))
+        self.spin_index = idx
         self.spin_section = sections[idx]
         feature = self.game.spinner
         start = self.angles[feature]
@@ -169,47 +233,92 @@ class GameScreen:
         turns = self.rng.choice((3, 4))
         self.spin_from = start
         self.spin_to = start + 360 * turns + ((target - start) % 360)
-        self.spin_anim = Anim(SPIN_TIME, now)
+        self.spin_anim = Anim(WINDUP_TIME + SPIN_TIME, now)
+        self.tick_section = None
+        self.landed = None
         self.message = None
+        self.sfx("spin")
+
+    def spin_angle(self, now: float) -> float:
+        """Arrow angle during a spin: a short pull back, then the spin."""
+        e = now - self.spin_anim.start
+        windup = 14.0
+        if e < WINDUP_TIME:
+            return self.spin_from - windup * math.sin(math.pi / 2 * e / WINDUP_TIME)
+        t = ease_out_cubic(min(1.0, (e - WINDUP_TIME) / SPIN_TIME))
+        start = self.spin_from - windup
+        return start + (self.spin_to - start) * t
 
     def try_place(self, r: int, c: int, now: float) -> None:
         if (r, c) not in self.game.legal_moves():
             self.hint_until = now + 1.2
+            self.sfx("bonk")
             return
         who = self.game.turn
         self.game.place(r, c)
         self.drop = (r, c, Anim(DROP_TIME, now))
         self.message = None
+        self.sfx("place")
         if self.game.phase == WON:
-            name = rules.LABELS[self.game.players[who].color]
-            self.say(f"{name} wins!", "Press A to play again", now, forever=True)
+            color = self.game.players[who].color
+            self.wins[color] = self.wins.get(color, 0) + 1
+            self.say(f"{rules.LABELS[color]} wins!", "Press A to play again", now, forever=True,
+                     icon=art.tile(color, 96))
+            self.later(0.15, "win", now)
+            self._throw_confetti()
         elif self.game.phase == DRAW:
             self.say("No winner!", "PLAY AGAIN!  Press A", now, forever=True)
+            self.later(0.2, "draw", now)
+        else:
+            color = self.game.player.color
+            self.say(f"{rules.LABELS[color]}'s turn!", "", now, icon=art.tile(color, 72))
+            self.later(0.3, "turn", now)
 
     # --- update ----------------------------------------------------------
 
     def update(self, now: float) -> None:
         g = self.game
+        dt = 0.0 if self.last_update is None else min(0.1, now - self.last_update)
+        self.last_update = now
+        for item in [q for q in self.queued if q[0] <= now]:
+            self.queued.remove(item)
+            self.sfx(item[1])
+        self._update_confetti(dt)
+        if self.spin_anim and not self.spin_anim.done(now):
+            # tick each time a section passes the arrow; slows as the spin does
+            section = int(((self.spin_angle(now) % 360) + 22.5) // 45) % 8
+            if section != self.tick_section:
+                if self.tick_section is not None:
+                    self.sfx("tick")
+                self.tick_section = section
         if self.spin_anim and self.spin_anim.done(now):
-            self.angles[g.spinner] = self.spin_to % 360
+            feature = g.spinner
+            self.angles[feature] = self.spin_to % 360
             self.spin_anim = None
             section = self.spin_section
+            self.landed = (feature, self.spin_index, now)
             g.resolve(section)
+            icon = result_icon(feature, section, int(self.layout.h * 0.09))
+            self.sfx("stop")
             if section == ZOO:
                 self.pass_anim = Anim(PASS_TIME, now)
-                self.say("SPIN A ZOO!", "Pass the spinners!", now)
+                self.say("SPIN-A-ZOO!", "Pass the spinners!", now, icon=icon)
+                self.later(0.1, "zoo", now)
             elif section == WILD:
-                self.say("WILD!", "Play on any square, even on a tile", now)
-                self._cursor_to_legal()
+                self.say("WILD!", "Play on any square, even on a tile", now, icon=icon)
+                self.later(0.1, "wild", now)
+                self._start_place(now)
             else:
                 label = rules.LABELS[section]
                 moves = g.legal_moves()
-                matched = any(g.board[r][c].get(g.spinner) == section for r, c in moves)
+                matched = any(g.board[r][c].get(feature) == section for r, c in moves)
                 if matched:
-                    self.say(f"{label}!", f"Cover a {label.lower()} square", now)
+                    self.say(f"{label}!", f"Cover a {label.lower()} square", now, icon=icon)
+                    self.later(0.1, section if feature == "animal" else feature, now)
                 else:
-                    self.say(f"{label}!", "None left, pick any empty square", now)
-                self._cursor_to_legal()
+                    self.say(f"{label}!", "None left, pick any empty square", now, icon=icon)
+                    self.later(0.1, "any", now)
+                self._start_place(now)
         if self.pass_anim and self.pass_anim.done(now):
             self.pass_anim = None
             self.say("Spin again!", "", now)
@@ -217,6 +326,33 @@ class GameScreen:
             self.drop = None
         if self.message and now > self.message[2]:
             self.message = None
+
+    def _start_place(self, now: float) -> None:
+        self._cursor_to_legal()
+        self.reveal_time = now
+
+    def _throw_confetti(self) -> None:
+        L = self.layout
+        colors = list(art.SQUARE_COLORS.values()) + [GOLD, art.WHITE]
+        for _ in range(160):
+            self.confetti.append([
+                self.rng.uniform(0, L.w), self.rng.uniform(-L.h * 0.6, 0),       # x, y
+                self.rng.uniform(-L.h * 0.15, L.h * 0.15), self.rng.uniform(0, L.h * 0.3),  # vx, vy
+                self.rng.uniform(0, math.tau), self.rng.uniform(-8, 8),           # angle, spin
+                self.rng.choice(colors), self.rng.uniform(0.6, 1.2) * L.h * 0.012,  # color, size
+            ])
+
+    def _update_confetti(self, dt: float) -> None:
+        if not self.confetti:
+            return
+        g = self.layout.h * 0.9
+        for p in self.confetti:
+            p[3] += g * dt
+            p[3] *= 0.985  # air drag, so it flutters
+            p[0] += p[2] * dt + math.sin(p[4]) * 0.6
+            p[1] += p[3] * dt
+            p[4] += p[5] * dt
+        self.confetti = [p for p in self.confetti if p[1] < self.layout.h + 20]
 
     def _previous_spinners(self) -> dict[str, str]:
         """Spinner positions before the last pass (one seat counter-clockwise)."""
@@ -233,47 +369,14 @@ class GameScreen:
     # --- drawing ---------------------------------------------------------
 
     def draw(self, now: float) -> None:
-        s = self.screen
-        s.fill(BG)
+        L = self.layout
+        self.screen.blit(theme.background(theme.T.name, L.w, L.h), (0, 0))
         self._draw_panels(now)
-        s.blit(self.board_surface, self.layout.board)
+        self.screen.blit(self.board_surface, L.board)
         self._draw_board_overlay(now)
         self._draw_spinners(now)
+        self._draw_confetti()
         self._draw_message()
-
-    def _draw_panels(self, now: float) -> None:
-        L, g = self.layout, self.game
-        seated = {p.seat: (i, p) for i, p in enumerate(g.players)}
-        for seat, rect in L.panels.items():
-            active = seat == g.player.seat and g.phase in (SPIN, PLACE)
-            pygame.draw.rect(self.screen, CARD if seat in seated else CARD_IDLE, rect,
-                             border_radius=L.margin)
-            if active:
-                color = art.TILE_COLORS[g.player.color]
-                pulse = 0.5 + 0.5 * math.sin(now * 5)
-                width = max(4, int(L.margin * (0.25 + 0.15 * pulse)))
-                pygame.draw.rect(self.screen, color, rect.inflate(width, width), width,
-                                 border_radius=L.margin + width // 2)
-                self._draw_pointer(rect, seat, color)
-            # footer: who sits here
-            fy = rect.bottom - L.h * 0.055
-            if seat in seated:
-                _, p = seated[seat]
-                ts = int(L.h * 0.06)
-                name = L.font.render(rules.LABELS[p.color], True, art.INK)
-                prompt = self._prompt() if active else ""
-                if prompt:
-                    left = L.font_small.render(prompt, True, art.TILE_COLORS[p.color])
-                else:
-                    left = L.font_small.render(f"{p.tiles} tiles", True, (110, 100, 110))
-                total = ts + 10 + max(name.get_width(), left.get_width())
-                x = rect.centerx - total // 2
-                self.screen.blit(art.tile(p.color, ts), (x, fy - ts // 2))
-                self.screen.blit(name, (x + ts + 10, fy - name.get_height() + 4))
-                self.screen.blit(left, (x + ts + 10, fy + 4))
-            else:
-                t = L.font_small.render("Empty seat", True, (150, 140, 150))
-                self.screen.blit(t, t.get_rect(center=(rect.centerx, fy)))
 
     def _prompt(self) -> str:
         """What the active player should do now, shown under their name."""
@@ -288,6 +391,57 @@ class GameScreen:
         if any(g.board[r][c].get(g.spinner) == g.last_spin for r, c in moves):
             return "Pick a bright square"
         return "Any empty square"
+
+    def _draw_panels(self, now: float) -> None:
+        L, g, T = self.layout, self.game, theme.T
+        seated = {p.seat: (i, p) for i, p in enumerate(g.players)}
+        for seat, rect in L.panels.items():
+            active = seat == g.player.seat and g.phase in (SPIN, PLACE)
+            pygame.draw.rect(self.screen, T.card if seat in seated else T.card_idle, rect,
+                             border_radius=L.margin)
+            if active:
+                color = art.TILE_COLORS[g.player.color]
+                pulse = 0.5 + 0.5 * math.sin(now * 5)
+                width = max(4, int(L.margin * (0.25 + 0.15 * pulse)))
+                pygame.draw.rect(self.screen, theme.accent(color), rect.inflate(width, width), width,
+                                 border_radius=L.margin + width // 2)
+                self._draw_pointer(rect, seat, theme.accent(color))
+            fy = rect.bottom - L.h * 0.055
+            if seat in seated:
+                _, p = seated[seat]
+                ts = int(L.h * 0.06)
+                name = L.font.render(rules.LABELS[p.color], True, T.text)
+                prompt = self._prompt() if active else ""
+                if prompt:
+                    line = L.font_small.render(prompt, True, theme.accent(art.TILE_COLORS[p.color]))
+                else:
+                    line = L.font_small.render(f"{p.tiles} tiles", True, T.muted)
+                total = ts + 10 + max(name.get_width(), line.get_width())
+                x = rect.centerx - total // 2
+                self.screen.blit(art.tile(p.color, ts), (x, fy - ts // 2))
+                self.screen.blit(name, (x + ts + 10, fy - name.get_height() + 4))
+                self.screen.blit(line, (x + ts + 10, fy + 4))
+                self._draw_wins(rect, self.wins.get(p.color, 0))
+            else:
+                t = L.font_small.render("Empty seat", True, T.muted)
+                self.screen.blit(t, t.get_rect(center=(rect.centerx, fy)))
+
+    def _draw_wins(self, rect, wins: int) -> None:
+        """Gold stars in the panel corner, one per round won."""
+        if not wins:
+            return
+        L = self.layout
+        r = L.h * 0.017
+        x, y = rect.right - L.margin * 0.6 - r, rect.top + L.margin * 0.6 + r
+        if wins > 4:
+            t = L.font_small.render(f"x{wins}", True, theme.T.text)
+            self.screen.blit(t, t.get_rect(midright=(x + r, y)))
+            x -= t.get_width() + r * 0.6
+            wins = 1
+        for i in range(wins):
+            pts = star_points(x - i * r * 2.3, y, r)
+            pygame.draw.polygon(self.screen, GOLD, pts)
+            pygame.draw.polygon(self.screen, art.INK, pts, 2)
 
     def _draw_pointer(self, rect, seat, color) -> None:
         """Small triangle on the panel edge, pointing at the board."""
@@ -328,13 +482,25 @@ class GameScreen:
             cx, cy = positions[feature]
             d = art.dial(feature, L.dial)
             self.screen.blit(d, (cx - L.dial / 2, cy - L.dial / 2))
-            label = L.font.render(rules.LABELS[feature].upper(), True, art.INK)
+            if self.landed and self.landed[0] == feature and not self.pass_anim:
+                self._draw_landed_glow(cx, cy, self.landed[1], now - self.landed[2])
+            label = L.font.render(rules.LABELS[feature].upper(), True, theme.T.text)
             self.screen.blit(label, label.get_rect(midbottom=(cx, cy - L.dial / 2 - 2)))
-            angle = self.angles[feature]
-            if feature == spinning:
-                t = ease_out_cubic(self.spin_anim.t(now))
-                angle = self.spin_from + (self.spin_to - self.spin_from) * t
-            art.draw_arrow(self.screen, cx, cy, L.dial, angle)
+            angle = self.spin_angle(now) if feature == spinning else self.angles[feature]
+            art.draw_arrow(self.screen, cx, cy, L.dial, angle, art.SPINNER_STYLE[feature]["arrow"])
+
+    def _draw_landed_glow(self, cx, cy, index, age) -> None:
+        """Outline the section the arrow stopped on, pulsing for a moment."""
+        if age > 2.5:
+            return
+        L = self.layout
+        r = L.dial * 0.48
+        a0 = art.section_angle(index) - 22.5 - 90
+        pts = [(cx, cy)] + [(cx + r * math.cos(math.radians(a0 + 45 * k / 10)),
+                             cy + r * math.sin(math.radians(a0 + 45 * k / 10))) for k in range(11)]
+        pulse = 0.5 + 0.5 * math.sin(age * 12)
+        width = max(3, int(L.dial * (0.02 + 0.015 * pulse)))
+        pygame.draw.polygon(self.screen, GOLD, pts, width)
 
     def _draw_board_overlay(self, now: float) -> None:
         L, g = self.layout, self.game
@@ -350,15 +516,30 @@ class GameScreen:
                 for k, who in enumerate(stack):
                     depth = len(stack) - 1 - k
                     size = ts
-                    if dropping and k == len(stack) - 1:
-                        size = int(ts * (1.35 - 0.35 * ease_out_cubic(self.drop[2].t(now))))
-                    img = art.tile(g.players[who].color, size)
+                    top = k == len(stack) - 1
+                    if dropping and top:
+                        # falls in big, squashes past its size, settles
+                        t = self.drop[2].t(now)
+                        size = int(ts * (1.5 - 0.5 * ease_out_back(t)))
+                    img = art.tile(g.players[who].color, max(4, size))
                     off = depth * L.cell * 0.04
+                    if g.phase == WON and g.win_line and (r, c) in g.win_line and top:
+                        i = g.win_line.index((r, c))
+                        off -= abs(math.sin(now * 6 + i * 0.7)) * L.cell * 0.1
                     self.screen.blit(img, img.get_rect(center=(rect.centerx, rect.centery + off)))
+                if dropping:
+                    t = self.drop[2].t(now)
+                    ring = pygame.Surface(rect.size, pygame.SRCALPHA)
+                    rad = ts * (0.45 + 0.35 * t)
+                    pygame.draw.circle(ring, (255, 255, 255, int(200 * (1 - t))),
+                                       (rect.w / 2, rect.h / 2), rad, max(2, L.gap // 2))
+                    self.screen.blit(ring, rect)
                 if len(stack) > 1:
                     self._badge(rect, len(stack))
                 if legal is not None and (r, c) not in legal:
                     self.screen.blit(dim, rect)
+        if legal is not None:
+            self._draw_ripple(legal, now)
         if g.phase == PLACE and not self.busy():
             r, c = self.cursor
             rect = L.cells[r][c]
@@ -381,6 +562,23 @@ class GameScreen:
                 pygame.draw.rect(self.screen, GOLD, L.cells[r][c], max(5, L.gap),
                                  border_radius=L.cell // 10)
 
+    def _draw_ripple(self, legal, now) -> None:
+        """Usable squares flash one after another, spreading from the cursor."""
+        age = now - self.reveal_time
+        if age < 0 or age > 1.5:
+            return
+        L = self.layout
+        r0, c0 = self.cursor
+        order = sorted(legal, key=lambda m: (abs(m[0] - r0) + abs(m[1] - c0), m))
+        for i, (r, c) in enumerate(order):
+            t = (age - i * RIPPLE_STEP) / 0.4
+            if 0 <= t <= 1:
+                rect = L.cells[r][c]
+                glow = pygame.Surface(rect.size, pygame.SRCALPHA)
+                pygame.draw.rect(glow, (255, 255, 255, int(150 * (1 - t))), glow.get_rect(),
+                                 border_radius=L.cell // 10)
+                self.screen.blit(glow, rect)
+
     def _badge(self, rect, n) -> None:
         L = self.layout
         rad = int(L.cell * 0.13)
@@ -390,24 +588,47 @@ class GameScreen:
         t = L.font_small.render(str(n), True, art.INK)
         self.screen.blit(t, t.get_rect(center=center))
 
+    def _draw_confetti(self) -> None:
+        for x, y, _, _, a, _, color, size in self.confetti:
+            w, h = size, size * 0.55 * abs(math.cos(a * 1.7)) + 1
+            ca, sa = math.cos(a), math.sin(a)
+            pts = [(x + dx * ca - dy * sa, y + dx * sa + dy * ca)
+                   for dx, dy in ((-w, -h), (w, -h), (w, h), (-w, h))]
+            pygame.draw.polygon(self.screen, color, pts)
+
     def _draw_message(self) -> None:
         if not self.message:
             return
         L = self.layout
-        title, sub, _ = self.message
+        title, sub, _, icon = self.message
         ti = L.font_big.render(title, True, art.INK)
         si = L.font.render(sub, True, (90, 80, 95)) if sub else None
-        w = max(ti.get_width(), si.get_width() if si else 0) + L.margin * 2
-        h = ti.get_height() + (si.get_height() if si else 0) + L.margin
+        text_w = max(ti.get_width(), si.get_width() if si else 0)
+        text_h = ti.get_height() + (si.get_height() if si else 0)
+        icon_w = icon.get_width() + L.margin if icon else 0
+        w = text_w + icon_w + L.margin * 2
+        h = max(text_h, icon.get_height() if icon else 0) + L.margin
         box = pygame.Rect(0, 0, w, h)
         box.center = L.board.center
-        if self.game.phase not in (WON, DRAW):
+        g = self.game
+        if g.phase not in (WON, DRAW):
             box.top = L.board.top + L.margin
+        elif g.phase == WON and g.win_line:
+            # keep the winning row in view
+            row = sum(r for r, _ in g.win_line) / len(g.win_line)
+            if row >= 2:
+                box.top = L.board.top + L.margin
+            else:
+                box.bottom = L.board.bottom - L.margin
         shadow = pygame.Surface(box.size, pygame.SRCALPHA)
-        pygame.draw.rect(shadow, (0, 0, 0, 70), shadow.get_rect(), border_radius=L.margin)
+        pygame.draw.rect(shadow, (0, 0, 0, 90), shadow.get_rect(), border_radius=L.margin)
         self.screen.blit(shadow, box.move(4, 6))
         pygame.draw.rect(self.screen, CARD, box, border_radius=L.margin)
         pygame.draw.rect(self.screen, art.INK, box, 4, border_radius=L.margin)
-        self.screen.blit(ti, ti.get_rect(midtop=(box.centerx, box.top + L.margin // 2)))
+        tx = box.x + L.margin + icon_w
+        if icon:
+            self.screen.blit(icon, icon.get_rect(midleft=(box.x + L.margin, box.centery)))
+        top = box.centery - text_h / 2
+        self.screen.blit(ti, ti.get_rect(midtop=(tx + text_w / 2, top)))
         if si:
-            self.screen.blit(si, si.get_rect(midbottom=(box.centerx, box.bottom - L.margin // 2)))
+            self.screen.blit(si, si.get_rect(midtop=(tx + text_w / 2, top + ti.get_height())))

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Play Spin-a-Zoo in a window on this machine.
+# Play Spin-A-Zoo! in a window on this machine.
 # Optional: SPINAZOO_WINDOW=1920x1080 tools/run-local.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."

@@ -1,10 +1,10 @@
-"""Spin-a-Zoo artwork, drawn in code.
+"""Spin-A-Zoo! artwork, drawn in code.
 
 Everything is drawn at twice the target size and smooth-scaled down, which
 gives clean edges without pygame's slower anti-aliased primitives. Results are
 cached per size, so each picture is drawn once per screen layout.
 
-A PNG in the game's art/ folder named after an animal (shepherd.png, cat.png,
+A PNG in the game's art/ folder named after an animal (elephant.png, cat.png,
 eagle.png, lion.png, bear.png) replaces that animal's drawing.
 """
 
@@ -43,9 +43,17 @@ def shade(color, f):
     return tuple(max(0, min(255, int(c * f))) for c in color)
 
 
+def fast(surf: pygame.Surface) -> pygame.Surface:
+    """Convert to the screen's pixel format (much quicker to draw), once a
+    screen exists."""
+    if pygame.display.get_surface() is None:
+        return surf
+    return surf.convert_alpha() if surf.get_flags() & pygame.SRCALPHA else surf.convert()
+
+
 def finish(surf: pygame.Surface, size: int) -> pygame.Surface:
     """Scale a supersampled surface down to its final size."""
-    return pygame.transform.smoothscale(surf, (size, size))
+    return fast(pygame.transform.smoothscale(surf, (size, size)))
 
 
 def canvas(size: int) -> pygame.Surface:
@@ -117,41 +125,50 @@ def _leaf(surf, color, x, y, u, angle):
     pygame.draw.line(surf, shade(color, 0.8), pts[0], pts[12], max(1, int(u * 0.35)))
 
 
-def draw_pattern(surf, pattern, rect, color):
+def draw_pattern(surf, pattern, rect, color, unit=None):
+    """Fill rect with a pattern. unit sets its scale (default: 1/30 of the
+    width, which suits a board square); larger areas pass a unit to keep the
+    pattern the same size instead of stretching it."""
     x0, y0, w, h = rect
-    u = w / 30
+    u = unit or w / 30
+    clip = surf.get_clip()
+    surf.set_clip(pygame.Rect(rect).clip(clip) if clip else pygame.Rect(rect))
     if pattern == "stripes":
-        step = w / 5
-        for i in range(-6, 12):
-            x = x0 + i * step
-            pygame.draw.line(surf, color, (x, y0), (x + h, y0 + h), max(2, int(w / 16)))
+        step = 6 * u
+        x = x0 - h - step
+        while x < x0 + w + step:
+            pygame.draw.line(surf, color, (x, y0), (x + h, y0 + h), max(2, int(1.9 * u)))
+            x += step
     elif pattern == "dots":
-        step = w / 5
-        for row in range(6):
-            for col in range(6):
-                off = step / 2 if row % 2 else 0
-                pygame.draw.circle(surf, color, (x0 + col * step + off, y0 + row * step + step / 2), w / 22)
+        step = 6 * u
+        for row in range(int(h / step) + 2):
+            off = step / 2 if row % 2 else 0
+            for col in range(int(w / step) + 2):
+                pygame.draw.circle(surf, color, (x0 + col * step + off, y0 + row * step + step / 2), 1.36 * u)
     elif pattern == "zigzag":
-        step = h / 5
-        for row in range(6):
+        step, seg = 6 * u, 3 * u
+        for row in range(int(h / step) + 2):
             y = y0 + row * step + step / 2
-            pts = [(x0 + i * w / 10, y + (u * 1.6 if i % 2 else -u * 1.6)) for i in range(11)]
-            pygame.draw.lines(surf, color, False, pts, max(2, int(w / 28)))
+            n = int(w / seg) + 3
+            pts = [(x0 - seg + i * seg, y + (1.6 * u if i % 2 else -1.6 * u)) for i in range(n)]
+            pygame.draw.lines(surf, color, False, pts, max(2, int(1.07 * u)))
     elif pattern == "notes":
-        step = w / 4
-        for row in range(5):
-            for col in range(5):
-                off = step / 2 if row % 2 else 0
+        step = 7.5 * u
+        for row in range(int(h / step) + 2):
+            off = step / 2 if row % 2 else 0
+            for col in range(int(w / step) + 2):
                 _note(surf, color, x0 + col * step + off - step / 4, y0 + row * step + step * 0.55, u)
     elif pattern == "leaves":
-        step = w / 4
-        for row in range(5):
-            for col in range(5):
-                off = step / 2 if row % 2 else 0
+        step = 7.5 * u
+        for row in range(int(h / step) + 2):
+            off = step / 2 if row % 2 else 0
+            for col in range(int(w / step) + 2):
                 _leaf(surf, color, x0 + col * step + off - step / 4, y0 + row * step + step / 2, u,
                       math.radians(35 if (row + col) % 2 else -35))
     else:
+        surf.set_clip(clip)
         raise ValueError(pattern)
+    surf.set_clip(clip)
 
 
 @lru_cache(maxsize=64)
@@ -187,23 +204,26 @@ def _draw_animal(s: pygame.Surface, name: str) -> None:
 
     line = max(2, round(2.2 * u))
 
-    if name == "shepherd":
-        tan, dark, black = (205, 145, 80), (70, 45, 25), (25, 20, 18)
-        for ear in (P((20, 44), (26, 2), (46, 30)), P((80, 44), (74, 2), (54, 30))):
-            pygame.draw.polygon(s, dark, ear)
-            pygame.draw.polygon(s, INK, ear, line)
-        pygame.draw.polygon(s, (230, 170, 120), P((27, 36), (29, 14), (40, 30)))
-        pygame.draw.polygon(s, (230, 170, 120), P((73, 36), (71, 14), (60, 30)))
-        pygame.draw.ellipse(s, tan, R(18, 22, 64, 64))
-        pygame.draw.polygon(s, dark, P((36, 23), (64, 23), (56, 44), (50, 50), (44, 44)))
-        pygame.draw.ellipse(s, INK, R(18, 22, 64, 64), line)
-        pygame.draw.ellipse(s, black, R(32, 54, 36, 32))
-        pygame.draw.ellipse(s, (10, 10, 10), R(42, 55, 16, 11))
-        pygame.draw.line(s, (235, 235, 235), C(46, 57), C(50, 57), max(1, round(u)))
-        for ex in (37, 63):
-            pygame.draw.ellipse(s, (60, 35, 15), R(ex - 5, 41, 10, 9))
-            pygame.draw.circle(s, WHITE, C(ex - 1.5, 43.5), 1.6 * u)
-        pygame.draw.line(s, (200, 80, 90), C(50, 72), C(50, 78), line)
+    if name == "elephant":
+        grey, dark, pink = (160, 166, 178), (120, 126, 140), (226, 170, 182)
+        for x in (2, 54):  # big ears behind the head
+            pygame.draw.ellipse(s, grey, R(x, 18, 44, 56))
+            pygame.draw.ellipse(s, INK, R(x, 18, 44, 56), line)
+            pygame.draw.ellipse(s, pink, R(x + 8, 28, 28, 36))
+        pygame.draw.ellipse(s, grey, R(24, 14, 52, 58))
+        pygame.draw.ellipse(s, INK, R(24, 14, 52, 58), line)
+        for x0, x1 in ((40, 31), (60, 69)):  # tusks
+            tusk = P((x0 - 3, 60), (x0 + 3, 62), (x1, 76))
+            pygame.draw.polygon(s, (252, 248, 232), tusk)
+            pygame.draw.polygon(s, INK, tusk, max(1, round(1.2 * u)))
+        trunk = P((42, 52), (58, 52), (57, 74), (60, 84), (66, 88), (63, 95), (54, 91), (48, 80), (44, 66))
+        pygame.draw.polygon(s, grey, trunk)
+        pygame.draw.polygon(s, INK, trunk, line)
+        for y in (62, 69, 76):
+            pygame.draw.line(s, dark, C(46, y), C(55, y), max(1, round(u)))
+        for ex in (39, 61):
+            pygame.draw.circle(s, (25, 22, 30), C(ex, 42), 4 * u)
+            pygame.draw.circle(s, WHITE, C(ex - 1.2, 40.8), 1.3 * u)
     elif name == "cat":
         black, white, pink = (30, 28, 34), (250, 250, 250), (240, 150, 170)
         for ear, inner in ((P((16, 44), (22, 2), (46, 24)), P((23, 34), (25, 12), (38, 25))),
@@ -311,7 +331,7 @@ def square(sq: rules.Square, size: int) -> pygame.Surface:
     out = finish(s, size)
     a = animal(sq.animal, int(size * 0.5))
     out.blit(a, ((size - a.get_width()) // 2, int(size * 0.5 - a.get_height() * 0.48)))
-    return out
+    return fast(out)
 
 
 # --- tiles -------------------------------------------------------------------
@@ -358,75 +378,176 @@ def section_angle(i: int) -> float:
     return i * 45.0
 
 
-def _wedge(cx, cy, r, a0, a1):
-    pts = [(cx, cy)]
-    for k in range(13):
-        a = math.radians(a0 + (a1 - a0) * k / 12 - 90)
+# Each spinner has its own look: rim, arrow and section colours.
+SPINNER_STYLE = {
+    "color": {"rim": (126, 87, 194), "arrow": (25, 118, 210)},
+    "shape": {"rim": (230, 100, 0), "arrow": (25, 118, 210),
+              "sections": ((255, 193, 7), (255, 143, 0))},
+    "pattern": {"rim": (173, 20, 87), "arrow": (255, 179, 0),
+                "sections": ((216, 27, 96), (142, 36, 170), (0, 137, 123), (244, 81, 30), (57, 73, 171))},
+    "animal": {"rim": (0, 121, 107), "arrow": (239, 108, 0),
+               "sections": ((38, 166, 154), (124, 179, 66))},
+}
+RAINBOW = ((229, 57, 53), (251, 140, 0), (253, 216, 53), (67, 160, 71), (30, 136, 229), (142, 36, 170))
+WILD_BG = (255, 255, 255)
+ZOO_BG = (255, 224, 70)
+
+
+def _wedge(cx, cy, r, a0, a1, r0=0.0):
+    """Pie slice from angle a0 to a1 (degrees clockwise from up); r0 > 0 cuts
+    out the middle, giving a ring segment."""
+    pts = []
+    for k in range(17):
+        a = math.radians(a0 + (a1 - a0) * k / 16 - 90)
         pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+    if r0:
+        for k in range(16, -1, -1):
+            a = math.radians(a0 + (a1 - a0) * k / 16 - 90)
+            pts.append((cx + r0 * math.cos(a), cy + r0 * math.sin(a)))
+    else:
+        pts.insert(0, (cx, cy))
     return pts
 
 
+def fancy_text(word: str, px: int, colors=RAINBOW, outline=INK) -> pygame.Surface:
+    """Bold text, each letter its own colour, with a dark outline."""
+    font = pygame.font.Font(None, px)
+    font.set_bold(True)
+    t = max(1, px // 12)
+    letters = [(font.render(ch, True, colors[i % len(colors)]), font.render(ch, True, outline))
+               for i, ch in enumerate(word)]
+    w = sum(img.get_width() for img, _ in letters) + 2 * t
+    h = letters[0][0].get_height() + 2 * t
+    s = pygame.Surface((w, h), pygame.SRCALPHA)
+    x = t
+    for img, out in letters:
+        for dx in (-t, 0, t):
+            for dy in (-t, 0, t):
+                if dx or dy:
+                    s.blit(out, (x + dx, t + dy))
+        s.blit(img, (x, t))
+        x += img.get_width()
+    return s
+
+
+def _stack(*surfs: pygame.Surface) -> pygame.Surface:
+    w = max(x.get_width() for x in surfs)
+    h = sum(x.get_height() for x in surfs) - 4 * (len(surfs) - 1)
+    s = pygame.Surface((w, h), pygame.SRCALPHA)
+    y = 0
+    for x in surfs:
+        s.blit(x, ((w - x.get_width()) // 2, y))
+        y += x.get_height() - 4
+    return s
+
+
+def _along(img: pygame.Surface, angle: float) -> pygame.Surface:
+    """Turn text to run along a section (outwards from the hub), never upside down."""
+    r = (90 - angle + 180) % 360 - 180
+    if abs(r) > 90:
+        r += 180
+    return pygame.transform.rotozoom(img, r, 1.0)
+
+
+def _fit(img: pygame.Surface, max_w: float, max_h: float) -> pygame.Surface:
+    k = min(1.0, max_w / img.get_width(), max_h / img.get_height())
+    if k >= 1.0:
+        return img
+    return pygame.transform.smoothscale(img, (max(1, int(img.get_width() * k)), max(1, int(img.get_height() * k))))
+
+
 @lru_cache(maxsize=16)
-def dial(feature: str, size: int, font_path: str | None = None) -> pygame.Surface:
+def dial(feature: str, size: int) -> pygame.Surface:
     """A spinner face (without its arrow)."""
     S = size * SS
     s = pygame.Surface((S, S), pygame.SRCALPHA)
     c = S / 2
-    r = S * 0.48
+    style = SPINNER_STYLE[feature]
+    rim_out, r = S * 0.495, S * 0.43  # coloured rim between r and rim_out
     sections = rules.spinner_sections(feature)
-    pygame.draw.circle(s, INK, (c, c), r + S * 0.012)
+    values = rules.VALUES[feature]
+
+    # rim with carnival lights
+    pygame.draw.circle(s, INK, (c, c), rim_out)
+    pygame.draw.circle(s, style["rim"], (c, c), rim_out - S * 0.008)
+    for k in range(24):
+        a = math.radians(k * 15 + 7.5 - 90)
+        rad = (r + rim_out) / 2
+        pygame.draw.circle(s, (255, 248, 200) if k % 2 else WHITE,
+                           (c + rad * math.cos(a), c + rad * math.sin(a)), S * 0.012)
+
     for i, sec in enumerate(sections):
         a = section_angle(i)
-        if feature == "color" and sec in SQUARE_COLORS:
-            fill = SQUARE_COLORS[sec]
-        elif sec == rules.WILD:
-            fill = (255, 250, 235)
+        wedge = _wedge(c, c, r, a - 22.5, a + 22.5)
+        if sec == rules.WILD:
+            pygame.draw.polygon(s, WILD_BG, wedge)
+            # a rainbow band along the outer edge
+            for k, col in enumerate(RAINBOW):
+                band = _wedge(c, c, r - k * S * 0.009, a - 22.5, a + 22.5, r - (k + 1) * S * 0.009)
+                pygame.draw.polygon(s, col, band)
         elif sec == rules.ZOO:
-            fill = (255, 236, 200)
+            pygame.draw.polygon(s, ZOO_BG, wedge)
+            for k in range(9):  # sunburst rays
+                ra = a - 22.5 + k * 5
+                pygame.draw.polygon(s, (255, 183, 30), _wedge(c, c, r, ra, ra + 2.5))
+        elif feature == "color":
+            pygame.draw.polygon(s, SQUARE_COLORS[sec], wedge)
+        elif feature == "pattern":
+            fill = style["sections"][values.index(sec)]
+            pygame.draw.polygon(s, fill, wedge)
+            layer = pygame.Surface((S, S), pygame.SRCALPHA)
+            draw_pattern(layer, sec, (0, 0, S, S), shade(fill, 1.45), unit=S / 70)
+            mask = pygame.Surface((S, S), pygame.SRCALPHA)
+            pygame.draw.polygon(mask, WHITE, wedge)
+            layer.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+            s.blit(layer, (0, 0))
         else:
-            fill = (246, 242, 250) if i % 2 else (232, 226, 240)
-        pygame.draw.polygon(s, fill, _wedge(c, c, r, a - 22.5, a + 22.5))
+            pygame.draw.polygon(s, style["sections"][values.index(sec) % 2], wedge)
+
+    # white dividers, then the outline of the face
     for i in range(8):
         a = math.radians(section_angle(i) - 22.5 - 90)
-        pygame.draw.line(s, INK, (c, c), (c + r * math.cos(a), c + r * math.sin(a)), max(2, S // 120))
-    pygame.draw.circle(s, INK, (c, c), r, max(3, S // 80))
+        pygame.draw.line(s, WHITE, (c, c), (c + r * math.cos(a), c + r * math.sin(a)), max(3, S // 90))
+    pygame.draw.circle(s, INK, (c, c), r, max(3, S // 110))
     out = finish(s, size)
 
-    # icons and words, placed at final size
-    font = pygame.font.Font(font_path, max(10, int(size * 0.075)))
-    icon = int(size * 0.2)
+    # pictures and words, placed at final size
+    icon = int(size * 0.19)
     for i, sec in enumerate(sections):
-        a = math.radians(section_angle(i) - 90)
-        x = size / 2 + size * 0.31 * math.cos(a)
-        y = size / 2 + size * 0.31 * math.sin(a)
+        ang = section_angle(i)
+        a = math.radians(ang - 90)
+        dist = 0.29 if sec in (rules.WILD, rules.ZOO) else 0.3
+        x = size / 2 + size * dist * math.cos(a)
+        y = size / 2 + size * dist * math.sin(a)
         if sec == rules.WILD:
-            img = _text(font, "WILD", (200, 60, 120))
+            img = _along(_fit(fancy_text("WILD!", int(size * 0.11)), size * 0.3, size * 0.14), ang)
         elif sec == rules.ZOO:
-            img = _two_lines(font, "SPIN A", "ZOO!", (190, 90, 0))
+            words = _stack(fancy_text("SPIN-A", int(size * 0.075)),
+                           fancy_text("ZOO!", int(size * 0.095), RAINBOW[3:] + RAINBOW[:3]))
+            img = _along(_fit(words, size * 0.3, size * 0.17), ang)
         elif feature == "shape":
             img = shape_icon(sec, icon)
-        elif feature == "pattern":
-            img = pattern_swatch(sec, icon)
         elif feature == "animal":
-            img = animal(sec, icon)
+            img = _badge(sec, icon, style["rim"])
         else:
-            img = None  # color sections are the color itself
+            img = None  # colour and pattern sections are the value itself
         if img:
             out.blit(img, (x - img.get_width() / 2, y - img.get_height() / 2))
+    return fast(out)
+
+
+@lru_cache(maxsize=16)
+def _badge(name: str, size: int, ring) -> pygame.Surface:
+    """An animal on a white disc with a coloured ring, so it pops."""
+    s = canvas(size)
+    S = size * SS
+    pygame.draw.circle(s, INK, (S / 2, S / 2), S * 0.5)
+    pygame.draw.circle(s, ring, (S / 2, S / 2), S * 0.47)
+    pygame.draw.circle(s, WHITE, (S / 2, S / 2), S * 0.4)
+    out = finish(s, size)
+    a = animal(name, int(size * 0.74))
+    out.blit(a, a.get_rect(center=(size / 2, size / 2)))
     return out
-
-
-def _text(font, text, color):
-    return font.render(text, True, color)
-
-
-def _two_lines(font, a, b, color):
-    ia, ib = _text(font, a, color), _text(font, b, color)
-    s = pygame.Surface((max(ia.get_width(), ib.get_width()), ia.get_height() + ib.get_height()),
-                       pygame.SRCALPHA)
-    s.blit(ia, ((s.get_width() - ia.get_width()) // 2, 0))
-    s.blit(ib, ((s.get_width() - ib.get_width()) // 2, ia.get_height()))
-    return s
 
 
 def draw_arrow(surf, cx, cy, size, angle_deg, color=INK):
@@ -435,19 +556,22 @@ def draw_arrow(surf, cx, cy, size, angle_deg, color=INK):
     a = math.radians(angle_deg - 90)
     ux, uy = math.cos(a), math.sin(a)
     px, py = -uy, ux
-    L, back, w = size * 0.4, size * 0.1, size * 0.045
-    tip = (cx + ux * L, cy + uy * L)
-    pts = [tip,
-           (cx + ux * (L - size * 0.1) + px * w * 1.8, cy + uy * (L - size * 0.1) + py * w * 1.8),
-           (cx + ux * (L - size * 0.1) + px * w * 0.7, cy + uy * (L - size * 0.1) + py * w * 0.7),
-           (cx - ux * back + px * w, cy - uy * back + py * w),
-           (cx - ux * back - px * w, cy - uy * back - py * w),
-           (cx + ux * (L - size * 0.1) - px * w * 0.7, cy + uy * (L - size * 0.1) - py * w * 0.7),
-           (cx + ux * (L - size * 0.1) - px * w * 1.8, cy + uy * (L - size * 0.1) - py * w * 1.8)]
-    pts = [(round(x), round(y)) for x, y in pts]
-    shadow = [(x + 2, y + 3) for x, y in pts]
-    pygame.gfxdraw.filled_polygon(surf, shadow, (0, 0, 0, 60))
+    L, back, w = size * 0.4, size * 0.1, size * 0.05
+    head = L - size * 0.11
+
+    def P(along, side):
+        return (round(cx + ux * along + px * side), round(cy + uy * along + py * side))
+    pts = [P(L, 0), P(head, w * 2.0), P(head, w * 0.75), P(-back, w), P(-back, -w),
+           P(head, -w * 0.75), P(head, -w * 2.0)]
+    shadow = [(x + 3, y + 4) for x, y in pts]
+    pygame.gfxdraw.filled_polygon(surf, shadow, (0, 0, 0, 70))
     pygame.gfxdraw.filled_polygon(surf, pts, color)
-    pygame.gfxdraw.aapolygon(surf, pts, color)
-    pygame.gfxdraw.filled_circle(surf, round(cx), round(cy), round(size * 0.06), (250, 250, 250))
-    pygame.gfxdraw.aacircle(surf, round(cx), round(cy), round(size * 0.06), color)
+    pygame.gfxdraw.aapolygon(surf, pts, INK)
+    pygame.draw.polygon(surf, INK, pts, max(2, size // 160))
+    # shine along the shaft
+    shine = [P(head, w * 0.3), P(-back * 0.5, w * 0.45), P(-back * 0.5, w * 0.15), P(head, w * 0.05)]
+    pygame.gfxdraw.filled_polygon(surf, shine, shade(color, 1.5) + (200,))
+    hub = round(size * 0.065)
+    pygame.gfxdraw.filled_circle(surf, round(cx), round(cy), hub, color)
+    pygame.gfxdraw.aacircle(surf, round(cx), round(cy), hub, INK)
+    pygame.gfxdraw.filled_circle(surf, round(cx), round(cy), max(2, hub // 2), WHITE)
