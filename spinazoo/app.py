@@ -90,7 +90,7 @@ def button(surf, L: Layout, label: str, center, focused: bool, enabled: bool = T
 
 def title_logo(surf, L: Layout, center, now: float, scale: float = 1.0) -> None:
     """'Spin-A-Zoo!' in bouncing, colored letters."""
-    font = pygame.font.Font(None, int(L.h * 0.16 * scale))
+    font = art.font(int(L.h * 0.16 * scale))
     colors = [art.SQUARE_COLORS[c] for c in ("red", "blue", "yellow", "green", "purple")]
     word = "Spin-A-Zoo!"
     letters = [font.render(ch, True, colors[i % 5]) for i, ch in enumerate(word)]
@@ -524,7 +524,7 @@ class HowToPlay(Scene):
         text(s, L.font_small, "Press A to go back", T.muted, midbottom=(L.w / 2, L.h - L.margin))
 
     def _word(self, word, color, size):
-        f = pygame.font.Font(None, int(size * 0.36))
+        f = art.font(int(size * 0.36))
         img = f.render(word, True, color)
         s = pygame.Surface((size, size), pygame.SRCALPHA)
         pygame.draw.circle(s, (255, 246, 225), (size / 2, size / 2), size / 2)

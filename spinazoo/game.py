@@ -68,14 +68,19 @@ class Layout:
             "BR": pygame.Rect(right, bottom, pw, ph),
             "BL": pygame.Rect(left, bottom, pw, ph),
         }
-        self.dial = int(min(pw * 0.78, ph * 0.64))
-        self.font_big = pygame.font.Font(None, max(24, int(h * 0.075)))
-        self.font = pygame.font.Font(None, max(18, int(h * 0.045)))
-        self.font_small = pygame.font.Font(None, max(14, int(h * 0.032)))
+        # panel: spinner name, spinner (as big as fits), player line
+        self.dial = int(min(pw * 0.94, ph * 0.7))
+        self.font_big = art.font(max(24, int(h * 0.075)))
+        self.font = art.font(max(18, int(h * 0.045)))
+        self.font_small = art.font(max(14, int(h * 0.032)))
 
     def dial_center(self, seat: str) -> tuple[float, float]:
         p = self.panels[seat]
-        return p.centerx, p.y + p.h * 0.47
+        return p.centerx, p.y + p.h * 0.115 + self.dial / 2
+
+    def label_y(self, seat: str) -> float:
+        """Bottom of the spinner name, just above the spinner."""
+        return self.dial_center(seat)[1] - self.dial / 2 - 2
 
 
 class Anim:
@@ -406,7 +411,7 @@ class GameScreen:
                 pygame.draw.rect(self.screen, theme.accent(color), rect.inflate(width, width), width,
                                  border_radius=L.margin + width // 2)
                 self._draw_pointer(rect, seat, theme.accent(color))
-            fy = rect.bottom - L.h * 0.055
+            fy = rect.bottom - rect.h * 0.085
             if seat in seated:
                 _, p = seated[seat]
                 ts = int(L.h * 0.06)
@@ -447,7 +452,7 @@ class GameScreen:
         """Small triangle on the panel edge, pointing at the board."""
         L = self.layout
         size = L.margin * 0.8
-        cy = rect.y + rect.h * 0.47
+        cy = L.dial_center(seat)[1]
         if seat in ("TL", "BL"):
             x = rect.right + L.margin * 0.15
             pts = [(x, cy - size), (x + size, cy), (x, cy + size)]
@@ -484,10 +489,17 @@ class GameScreen:
             self.screen.blit(d, (cx - L.dial / 2, cy - L.dial / 2))
             if self.landed and self.landed[0] == feature and not self.pass_anim:
                 self._draw_landed_glow(cx, cy, self.landed[1], now - self.landed[2])
-            label = L.font.render(rules.LABELS[feature].upper(), True, theme.T.text)
+            label = L.font_small.render(rules.LABELS[feature].upper(), True, theme.T.text)
             self.screen.blit(label, label.get_rect(midbottom=(cx, cy - L.dial / 2 - 2)))
             angle = self.spin_angle(now) if feature == spinning else self.angles[feature]
-            art.draw_arrow(self.screen, cx, cy, L.dial, angle, art.SPINNER_STYLE[feature]["arrow"])
+            art.draw_arrow(self.screen, cx, cy, L.dial, angle, self._arrow_color(feature))
+
+    def _arrow_color(self, feature: str) -> tuple:
+        """Arrows take the colour of the player at the spinner's seat (the
+        seat it is moving to while spinners are passed); grey when empty."""
+        seat = next(s for s, f in self.game.spinners.items() if f == feature)
+        player = next((p for p in self.game.players if p.seat == seat), None)
+        return art.TILE_COLORS[player.color] if player else (205, 205, 215)
 
     def _draw_landed_glow(self, cx, cy, index, age) -> None:
         """Outline the section the arrow stopped on, pulsing for a moment."""

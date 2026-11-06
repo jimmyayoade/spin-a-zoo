@@ -74,6 +74,10 @@ Everything is drawn and synthesised in code, so the game needs no image or sound
 - **Pictures:** a PNG named `elephant.png`, `cat.png`, `eagle.png`, `lion.png` or `bear.png` in `spinazoo/art/` replaces that animal's drawing everywhere.
 - **Sounds:** an `.ogg` or `.wav` in `spinazoo/sounds/` named after an effect replaces it: `lion`, `cat`, `eagle`, `bear`, `elephant` (animal results), `color`, `shape`, `pattern`, `wild`, `zoo`, `any`, `spin`, `tick`, `stop`, `place`, `bonk`, `turn`, `win`, `draw`, `blip`, `select`, `back`. `music.ogg` replaces the music.
 
+## Credits
+
+- Font: [Fredoka](https://github.com/hafontia/Fredoka-One) by The Fredoka Project Authors, under the SIL Open Font License 1.1 (`spinazoo/fonts/OFL.txt`). `Fredoka-SemiBold.ttf` is the SemiBold weight cut from the variable font in [google/fonts](https://github.com/google/fonts/tree/main/ofl/fredoka) with `fonttools varLib.instancer Fredoka[wdth,wght].ttf wght=600 wdth=100 --update-name-table`.
+
 ## License
 
-MIT
+The game's code is MIT. The font keeps its own license (SIL OFL 1.1).

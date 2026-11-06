@@ -20,6 +20,10 @@ import rules
 
 SS = 2  # supersampling factor
 ART_DIR = Path(__file__).resolve().parent / "art"
+# Fredoka SemiBold (SIL Open Font License, fonts/OFL.txt): round, chunky
+# letters that young players read easily.
+FONT_PATH = Path(__file__).resolve().parent / "fonts" / "Fredoka-SemiBold.ttf"
+FONT_SCALE = 0.75  # Fredoka is wider than pygame's font at the same size
 
 INK = (40, 32, 48)
 WHITE = (255, 255, 255)
@@ -37,6 +41,15 @@ TILE_COLORS = {
     "yellow": (250, 175, 0),
     "red": (190, 30, 40),
 }
+
+
+@lru_cache(maxsize=64)
+def font(px: int) -> pygame.font.Font:
+    """The game's font at about the size pygame's own font would be at px."""
+    try:
+        return pygame.font.Font(str(FONT_PATH), max(8, int(px * FONT_SCALE)))
+    except (OSError, pygame.error):
+        return pygame.font.Font(None, px)  # font file missing: still playable
 
 
 def shade(color, f):
@@ -384,7 +397,9 @@ SPINNER_STYLE = {
     "shape": {"rim": (230, 100, 0), "arrow": (25, 118, 210),
               "sections": ((255, 193, 7), (255, 143, 0))},
     "pattern": {"rim": (173, 20, 87), "arrow": (255, 179, 0),
-                "sections": ((216, 27, 96), (142, 36, 170), (0, 137, 123), (244, 81, 30), (57, 73, 171))},
+                # notes, stripes, dots, zigzag, leaves: deep section, bright pattern
+                "sections": ((216, 27, 96), (106, 27, 154), (0, 121, 107), (230, 74, 25), (40, 53, 147)),
+                "ink": ((255, 235, 59), (198, 255, 0), (255, 213, 79), (128, 222, 234), (174, 234, 0))},
     "animal": {"rim": (0, 121, 107), "arrow": (239, 108, 0),
                "sections": ((38, 166, 154), (124, 179, 66))},
 }
@@ -411,10 +426,9 @@ def _wedge(cx, cy, r, a0, a1, r0=0.0):
 
 def fancy_text(word: str, px: int, colors=RAINBOW, outline=INK) -> pygame.Surface:
     """Bold text, each letter its own colour, with a dark outline."""
-    font = pygame.font.Font(None, px)
-    font.set_bold(True)
-    t = max(1, px // 12)
-    letters = [(font.render(ch, True, colors[i % len(colors)]), font.render(ch, True, outline))
+    f = font(px)
+    t = max(2, px // 10)
+    letters = [(f.render(ch, True, colors[i % len(colors)]), f.render(ch, True, outline))
                for i, ch in enumerate(word)]
     w = sum(img.get_width() for img, _ in letters) + 2 * t
     h = letters[0][0].get_height() + 2 * t
@@ -493,10 +507,10 @@ def dial(feature: str, size: int) -> pygame.Surface:
         elif feature == "color":
             pygame.draw.polygon(s, SQUARE_COLORS[sec], wedge)
         elif feature == "pattern":
-            fill = style["sections"][values.index(sec)]
-            pygame.draw.polygon(s, fill, wedge)
+            k = values.index(sec)
+            pygame.draw.polygon(s, style["sections"][k], wedge)
             layer = pygame.Surface((S, S), pygame.SRCALPHA)
-            draw_pattern(layer, sec, (0, 0, S, S), shade(fill, 1.45), unit=S / 70)
+            draw_pattern(layer, sec, (0, 0, S, S), style["ink"][k], unit=S / 60)
             mask = pygame.Surface((S, S), pygame.SRCALPHA)
             pygame.draw.polygon(mask, WHITE, wedge)
             layer.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
@@ -520,11 +534,11 @@ def dial(feature: str, size: int) -> pygame.Surface:
         x = size / 2 + size * dist * math.cos(a)
         y = size / 2 + size * dist * math.sin(a)
         if sec == rules.WILD:
-            img = _along(_fit(fancy_text("WILD!", int(size * 0.11)), size * 0.3, size * 0.14), ang)
+            img = _along(_fit(fancy_text("WILD!", int(size * 0.13)), size * 0.32, size * 0.15), ang)
         elif sec == rules.ZOO:
-            words = _stack(fancy_text("SPIN-A", int(size * 0.075)),
-                           fancy_text("ZOO!", int(size * 0.095), RAINBOW[3:] + RAINBOW[:3]))
-            img = _along(_fit(words, size * 0.3, size * 0.17), ang)
+            words = _stack(fancy_text("SPIN-A", int(size * 0.09)),
+                           fancy_text("ZOO!", int(size * 0.11), RAINBOW[3:] + RAINBOW[:3]))
+            img = _along(_fit(words, size * 0.32, size * 0.19), ang)
         elif feature == "shape":
             img = shape_icon(sec, icon)
         elif feature == "animal":
