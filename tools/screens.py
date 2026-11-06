@@ -1,0 +1,51 @@
+"""Render game screens in set-up states to PNGs, for checking the layout."""
+import os
+import sys
+from pathlib import Path
+
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "spinazoo"))
+
+import pygame  # noqa: E402
+
+pygame.init()
+out = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
+w, h = (int(v) for v in (sys.argv[2] if len(sys.argv) > 2 else "1920x1080").split("x"))
+screen = pygame.display.set_mode((w, h))
+
+import game  # noqa: E402
+import rules  # noqa: E402
+
+
+def shot(name, g, now):
+    g.update(now)
+    g.draw(now)
+    pygame.image.save(screen, str(out / f"{name}.png"))
+    print(out / f"{name}.png")
+
+
+# 1. start of a 3-player game, mid-spin
+g = game.GameScreen(screen, [("green", "TL"), ("blue", "TR"), ("red", "BR")], seed=3)
+g.handle(game.OK, 0.0)
+shot("1-spinning", g, 0.7)
+
+# 2. place phase after a value spin, with some tiles and a stack
+g = game.GameScreen(screen, [("green", "TL"), ("yellow", "BR")], seed=5)
+gm = g.game
+for (r, c), who in {(0, 0): 0, (1, 1): 1, (2, 2): 0, (3, 1): 1, (4, 4): 0}.items():
+    gm.stacks[r][c].append(who)
+gm.stacks[2][2].append(1)
+g.start_spin(0.0)
+g.spin_section = rules.VALUES[gm.spinner][2]
+shot("2-place", g, 5.0)
+
+# 3. a win
+g = game.GameScreen(screen, [("green", "TL"), ("blue", "TR"), ("yellow", "BR"), ("red", "BL")], seed=8)
+gm = g.game
+for c in range(3):
+    gm.stacks[1][c].append(3)
+gm.stacks[0][4].append(1)
+gm.turn = 3
+gm.resolve(rules.WILD)
+g.try_place(1, 3, 0.0)
+shot("3-win", g, 1.0)

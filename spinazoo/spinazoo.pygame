@@ -1,0 +1,9 @@
+# Spin-a-Zoo: launched by Batocera's Pygame system (python spinazoo.pygame).
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import game  # noqa: E402
+
+game.main()
