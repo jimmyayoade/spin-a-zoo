@@ -6,7 +6,7 @@ Spin your spinner, cover a matching square on the zoo board, and be the first to
 
 ## Rules
 
-**Setup:** each player picks a tile color (green, blue, yellow or red, 16 tiles each) and a seat (N, E, S or W). Empty seats keep their spinners: they still get passed around. The board is shuffled for every game.
+**Setup:** each player picks a tile color (green, blue, yellow or red, 16 tiles each) and one of the four spinner seats, two on each side of the board. Empty seats keep their spinners: they still get passed around. The board is shuffled for every game.
 
 The board is a 5×5 grid. Every square has a color, a pattern, a shape and an animal:
 
@@ -27,7 +27,7 @@ Each spinner has 8 sections: its 5 values, 2 **Wild** and 1 **Spin A Zoo!**
 |---|---|
 | A value | Play a tile on an **empty** square that matches. If no empty square matches, play on any empty square. You can't play on a square that already has a tile. |
 | **Wild** | Play on any square, even on top of another tile, as long as the stack has fewer than 4. |
-| **Spin A Zoo!** | Everyone passes their spinner clockwise (including the empty seats' spinners), then you spin again. |
+| **Spin A Zoo!** | Everyone passes their spinner clockwise: top left → top right → bottom right → bottom left (including the empty seats' spinners), then you spin again. |
 
 Then it's the next player's turn, clockwise.
 
