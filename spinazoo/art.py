@@ -52,6 +52,15 @@ def font(px: int) -> pygame.font.Font:
         return pygame.font.Font(None, px)  # font file missing: still playable
 
 
+def pattern_ink(bg) -> tuple:
+    """Pattern colour that stands out on bg: a pale tint on darker colours,
+    a deeper shade on light ones (yellow)."""
+    lum = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2]
+    if lum > 170:
+        return shade(bg, 0.68)
+    return tuple(int(c + (255 - c) * 0.55) for c in bg)
+
+
 def shade(color, f):
     return tuple(max(0, min(255, int(c * f))) for c in color)
 
@@ -189,9 +198,11 @@ def pattern_swatch(pattern: str, size: int) -> pygame.Surface:
     """A round sample of a pattern, for the pattern spinner."""
     s = canvas(size)
     S = size * SS
+    style = SPINNER_STYLE["pattern"]
+    k = rules.VALUES["pattern"].index(pattern)
     body = pygame.Surface((S, S), pygame.SRCALPHA)
-    body.fill((236, 230, 240))
-    draw_pattern(body, pattern, (0, 0, S, S), (110, 96, 120))
+    body.fill(style["sections"][k])
+    draw_pattern(body, pattern, (0, 0, S, S), style["ink"][k], unit=S / 22)
     mask = pygame.Surface((S, S), pygame.SRCALPHA)
     pygame.draw.circle(mask, WHITE, (S / 2, S / 2), S * 0.44)
     body.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
@@ -334,7 +345,7 @@ def square(sq: rules.Square, size: int) -> pygame.Surface:
     radius = S // 10
     body = pygame.Surface((S, S), pygame.SRCALPHA)
     body.fill(bg)
-    draw_pattern(body, sq.pattern, (0, 0, S, S), shade(bg, 0.78))
+    draw_pattern(body, sq.pattern, (0, 0, S, S), pattern_ink(bg))
     mask = pygame.Surface((S, S), pygame.SRCALPHA)
     pygame.draw.rect(mask, WHITE, (0, 0, S, S), border_radius=radius)
     body.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
@@ -408,6 +419,56 @@ WILD_BG = (255, 255, 255)
 ZOO_BG = (255, 224, 70)
 
 
+def _star(cx, cy, r, inner=0.45):
+    pts = []
+    for i in range(10):
+        a = math.radians(-90 + i * 36)
+        rad = r if i % 2 == 0 else r * inner
+        pts.append((cx + rad * math.cos(a), cy + rad * math.sin(a)))
+    return pts
+
+
+@lru_cache(maxsize=32)
+def wild_icon(size: int) -> pygame.Surface:
+    """WILD!: a white star on a rainbow disc."""
+    s = canvas(size)
+    S = size * SS
+    c = S / 2
+    for i, col in enumerate(RAINBOW):
+        pygame.draw.polygon(s, col, _wedge(c, c, c * 0.95, i * 60, (i + 1) * 60))
+    pygame.draw.circle(s, INK, (c, c), c * 0.95, max(3, S // 28))
+    pygame.draw.polygon(s, WHITE, _star(c, c, c * 0.66))
+    pygame.draw.polygon(s, INK, _star(c, c, c * 0.66), max(3, S // 34))
+    return finish(s, size)
+
+
+@lru_cache(maxsize=32)
+def zoo_icon(size: int) -> pygame.Surface:
+    """SPIN-A-ZOO!: two arrows chasing round a circle (pass the spinners)."""
+    s = canvas(size)
+    S = size * SS
+    c = S / 2
+    pygame.draw.circle(s, INK, (c, c), c * 0.97)
+    pygame.draw.circle(s, ZOO_BG, (c, c), c * 0.9)
+    r, w = c * 0.55, max(4, int(S * 0.11))
+    for start, col in ((200, (230, 74, 25)), (20, (0, 121, 107))):
+        rect = pygame.Rect(c - r, c - r, 2 * r, 2 * r)
+        # arc from start, 120 degrees clockwise (pygame arcs run anticlockwise)
+        a0, a1 = math.radians(-(start + 120)), math.radians(-start)
+        for d in range(-w // 2, w // 2 + 1, 2):
+            pygame.draw.arc(s, col, rect.inflate(d * 2, d * 2), a0, a1, 3)
+        # arrow head at the clockwise end
+        end = math.radians(start + 120)
+        hx, hy = c + r * math.cos(end), c + r * math.sin(end)
+        tx, ty = -math.sin(end), math.cos(end)  # clockwise tangent
+        nx, ny = math.cos(end), math.sin(end)
+        hs = w * 1.25
+        pygame.draw.polygon(s, col, [(hx + tx * hs, hy + ty * hs), (hx + nx * hs, hy + ny * hs),
+                                     (hx - nx * hs, hy - ny * hs)])
+    pygame.draw.circle(s, INK, (c, c), c * 0.9, max(3, S // 34))
+    return finish(s, size)
+
+
 def _wedge(cx, cy, r, a0, a1, r0=0.0):
     """Pie slice from angle a0 to a1 (degrees clockwise from up); r0 > 0 cuts
     out the middle, giving a ring segment."""
@@ -455,14 +516,6 @@ def _stack(*surfs: pygame.Surface) -> pygame.Surface:
     return s
 
 
-def _along(img: pygame.Surface, angle: float) -> pygame.Surface:
-    """Turn text to run along a section (outwards from the hub), never upside down."""
-    r = (90 - angle + 180) % 360 - 180
-    if abs(r) > 90:
-        r += 180
-    return pygame.transform.rotozoom(img, r, 1.0)
-
-
 def _fit(img: pygame.Surface, max_w: float, max_h: float) -> pygame.Surface:
     k = min(1.0, max_w / img.get_width(), max_h / img.get_height())
     if k >= 1.0:
@@ -495,10 +548,6 @@ def dial(feature: str, size: int) -> pygame.Surface:
         wedge = _wedge(c, c, r, a - 22.5, a + 22.5)
         if sec == rules.WILD:
             pygame.draw.polygon(s, WILD_BG, wedge)
-            # a rainbow band along the outer edge
-            for k, col in enumerate(RAINBOW):
-                band = _wedge(c, c, r - k * S * 0.009, a - 22.5, a + 22.5, r - (k + 1) * S * 0.009)
-                pygame.draw.polygon(s, col, band)
         elif sec == rules.ZOO:
             pygame.draw.polygon(s, ZOO_BG, wedge)
             for k in range(9):  # sunburst rays
@@ -527,18 +576,35 @@ def dial(feature: str, size: int) -> pygame.Surface:
 
     # pictures and words, placed at final size
     icon = int(size * 0.19)
+    def at(dist, ang):
+        a = math.radians(ang - 90)
+        return size / 2 + size * dist * math.cos(a), size / 2 + size * dist * math.sin(a)
+
     for i, sec in enumerate(sections):
         ang = section_angle(i)
-        a = math.radians(ang - 90)
-        dist = 0.29 if sec in (rules.WILD, rules.ZOO) else 0.3
-        x = size / 2 + size * dist * math.cos(a)
-        y = size / 2 + size * dist * math.sin(a)
-        if sec == rules.WILD:
-            img = _along(_fit(fancy_text("WILD!", int(size * 0.13)), size * 0.32, size * 0.15), ang)
-        elif sec == rules.ZOO:
-            words = _stack(fancy_text("SPIN-A", int(size * 0.09)),
-                           fancy_text("ZOO!", int(size * 0.11), RAINBOW[3:] + RAINBOW[:3]))
-            img = _along(_fit(words, size * 0.32, size * 0.19), ang)
+        x, y = at(0.3, ang)
+        if sec in (rules.WILD, rules.ZOO):
+            # the picture is the main signal; the word sits round the rim
+            if sec == rules.WILD:
+                words = fancy_text("WILD!", int(size * 0.11))
+            else:
+                words = _stack(fancy_text("SPIN-A", int(size * 0.075)),
+                               fancy_text("ZOO!", int(size * 0.1), RAINBOW[3:] + RAINBOW[:3]))
+            # write across the section, or along it on the sides, whichever
+            # is nearer to level so it reads left to right
+            across = (-ang + 90) % 180 - 90
+            along = (90 - ang + 90) % 180 - 90
+            sym_size = 0.12
+            if abs(along) + 1 < abs(across):
+                img = pygame.transform.rotozoom(_fit(words, size * 0.22, size * 0.12), along, 1.0)
+                sym_at, x, y = 0.135, *at(0.315, ang)
+                sym_size = 0.1
+            else:
+                img = pygame.transform.rotozoom(_fit(words, size * 0.25, size * 0.14), across, 1.0)
+                sym_at, x, y = 0.18, *at(0.335, ang)
+            sym = (wild_icon if sec == rules.WILD else zoo_icon)(int(size * sym_size))
+            sx, sy = at(sym_at, ang)
+            out.blit(sym, sym.get_rect(center=(sx, sy)))
         elif feature == "shape":
             img = shape_icon(sec, icon)
         elif feature == "animal":

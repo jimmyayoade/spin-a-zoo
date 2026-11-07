@@ -27,8 +27,9 @@ def shot(name, g, now):
 
 # 1. start of a 3-player game, mid-spin
 g = game.GameScreen(screen, [("green", "TL"), ("blue", "TR"), ("red", "BR")], seed=3)
-g.handle(game.OK, 0.0)
-shot("1-spinning", g, 0.7)
+shot("0-ready", g, 1.0)
+g.handle(game.OK, 1.0)
+shot("1-spinning", g, 1.7)
 
 # 2. place phase after a value spin, with some tiles and a stack
 g = game.GameScreen(screen, [("green", "TL"), ("yellow", "BR")], seed=5)
@@ -38,7 +39,9 @@ for (r, c), who in {(0, 0): 0, (1, 1): 1, (2, 2): 0, (3, 1): 1, (4, 4): 0}.items
 gm.stacks[2][2].append(1)
 g.start_spin(0.0)
 g.spin_section = rules.VALUES[gm.spinner][2]
-shot("2-place", g, 5.0)
+g.update(4.9)
+shot("2a-card", g, 5.6)
+shot("2-place", g, 7.5)
 
 # 3. a win
 g = game.GameScreen(screen, [("green", "TL"), ("blue", "TR"), ("yellow", "BR"), ("red", "BL")], seed=8)

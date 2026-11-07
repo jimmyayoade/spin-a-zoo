@@ -21,6 +21,9 @@ SPIN_TIME = 2.0
 PASS_TIME = 0.9
 DROP_TIME = 0.35
 MESSAGE_TIME = 1.5
+CARD_TIME = 1.5          # result card over the player's spinner
+CARD_DELAY = 0.3         # let the arrow settle before the card pops up
+TURN_FLASH = 0.7
 RIPPLE_STEP = 0.035      # delay between squares lighting up after a spin
 
 # Inputs the screen understands (keyboard and pads both map onto these).
@@ -106,20 +109,11 @@ def star_points(cx, cy, r):
 def result_icon(feature: str, section: str, size: int) -> pygame.Surface:
     """A picture of a spin result, for players who can't read yet."""
     if section == ZOO:
-        return art.dial(feature, size)
+        return art.zoo_icon(size)
+    if section == WILD:
+        return art.wild_icon(size)
     s = pygame.Surface((size, size), pygame.SRCALPHA)
     c = size / 2
-    if section == WILD:
-        colors = list(art.SQUARE_COLORS.values())
-        for i, col in enumerate(colors):
-            a0, a1 = i * 72 - 90, (i + 1) * 72 - 90
-            pts = [(c, c)] + [(c + c * 0.95 * math.cos(math.radians(a0 + (a1 - a0) * k / 8)),
-                               c + c * 0.95 * math.sin(math.radians(a0 + (a1 - a0) * k / 8))) for k in range(9)]
-            pygame.draw.polygon(s, col, pts)
-        pygame.draw.circle(s, art.INK, (c, c), c * 0.95, max(2, size // 30))
-        pygame.draw.polygon(s, art.WHITE, star_points(c, c, c * 0.62))
-        pygame.draw.polygon(s, art.INK, star_points(c, c, c * 0.62), max(2, size // 40))
-        return s
     if feature == "color":
         pygame.draw.circle(s, art.SQUARE_COLORS[section], (c, c), c * 0.9)
         pygame.draw.circle(s, art.INK, (c, c), c * 0.9, max(2, size // 30))
@@ -158,6 +152,10 @@ class GameScreen:
         self.pass_anim: Anim | None = None
         self.drop: tuple[int, int, Anim] | None = None
         self.message: tuple[str, str, float, pygame.Surface | None] | None = None
+        # result card: (seat, picture, words, start time)
+        self.card: tuple[str, pygame.Surface, str, float] | None = None
+        self.pass_at: float | None = None   # when the spinners start passing
+        self.turn_flash = -10.0
         self.hint_until = 0.0
         self.tick_section: int | None = None
         self.queued: list[tuple[float, str]] = []  # (time, sound)
@@ -177,11 +175,13 @@ class GameScreen:
         return art.fast(s)
 
     def busy(self) -> bool:
-        return bool(self.spin_anim or self.pass_anim or self.drop)
+        return bool(self.spin_anim or self.pass_anim or self.drop or self.pass_at is not None)
 
     def animating(self) -> bool:
         """Anything moving on screen (decides the frame rate)."""
-        return self.busy() or bool(self.confetti) or self.game.phase == WON
+        return (self.busy() or bool(self.confetti) or self.game.phase == WON
+                or (self.card is not None and self.last_update is not None
+                    and self.last_update - self.card[3] < CARD_TIME))
 
     def later(self, delay: float, name: str, now: float) -> None:
         self.queued.append((now + delay, name))
@@ -242,6 +242,7 @@ class GameScreen:
         self.tick_section = None
         self.landed = None
         self.message = None
+        self.card = None
         self.sfx("spin")
 
     def spin_angle(self, now: float) -> float:
@@ -275,8 +276,9 @@ class GameScreen:
             self.say("No winner!", "PLAY AGAIN!  Press A", now, forever=True)
             self.later(0.2, "draw", now)
         else:
-            color = self.game.player.color
-            self.say(f"{rules.LABELS[color]}'s turn!", "", now, icon=art.tile(color, 72))
+            # no banner over the board: the next player's panel lights up
+            self.card = None
+            self.turn_flash = now + 0.15
             self.later(0.3, "turn", now)
 
     # --- update ----------------------------------------------------------
@@ -303,30 +305,31 @@ class GameScreen:
             section = self.spin_section
             self.landed = (feature, self.spin_index, now)
             g.resolve(section)
-            icon = result_icon(feature, section, int(self.layout.h * 0.09))
+            icon = result_icon(feature, section, int(self.layout.dial * 0.5))
+            seat = g.player.seat
             self.sfx("stop")
             if section == ZOO:
-                self.pass_anim = Anim(PASS_TIME, now)
-                self.say("SPIN-A-ZOO!", "Pass the spinners!", now, icon=icon)
-                self.later(0.1, "zoo", now)
+                # show it, then pass the spinners
+                self.card = (seat, icon, "SPIN-A-ZOO!", now + CARD_DELAY)
+                self.pass_at = now + CARD_DELAY + 0.9
+                self.later(CARD_DELAY, "zoo", now)
             elif section == WILD:
-                self.say("WILD!", "Play on any square, even on a tile", now, icon=icon)
-                self.later(0.1, "wild", now)
+                self.card = (seat, icon, "WILD!", now + CARD_DELAY)
+                self.later(CARD_DELAY, "wild", now)
                 self._start_place(now)
             else:
-                label = rules.LABELS[section]
                 moves = g.legal_moves()
                 matched = any(g.board[r][c].get(feature) == section for r, c in moves)
-                if matched:
-                    self.say(f"{label}!", f"Cover a {label.lower()} square", now, icon=icon)
-                    self.later(0.1, section if feature == "animal" else feature, now)
-                else:
-                    self.say(f"{label}!", "None left, pick any empty square", now, icon=icon)
-                    self.later(0.1, "any", now)
+                self.card = (seat, icon, rules.LABELS[section] + "!", now + CARD_DELAY)
+                self.later(CARD_DELAY, (section if feature == "animal" else feature) if matched else "any", now)
                 self._start_place(now)
+        if self.pass_at is not None and now >= self.pass_at:
+            self.pass_at = None
+            self.card = None
+            self.pass_anim = Anim(PASS_TIME, now)
         if self.pass_anim and self.pass_anim.done(now):
             self.pass_anim = None
-            self.say("Spin again!", "", now)
+            self.turn_flash = now  # same player, new spinner: spin again
         if self.drop and self.drop[2].done(now):
             self.drop = None
         if self.message and now > self.message[2]:
@@ -380,22 +383,27 @@ class GameScreen:
         self.screen.blit(self.board_surface, L.board)
         self._draw_board_overlay(now)
         self._draw_spinners(now)
+        self._draw_focus(now)
+        self._draw_card(now)
         self._draw_confetti()
         self._draw_message()
 
-    def _prompt(self) -> str:
-        """What the active player should do now, shown under their name."""
+    def _prompt(self) -> tuple[str, pygame.Surface | None]:
+        """What the active player should do now (words, small picture),
+        shown under their name."""
         g = self.game
         if self.busy():
-            return ""
+            return "", None
+        size = self.layout.font_small.get_height()  # picture as tall as the words
         if g.phase == SPIN:
-            return "Press A to spin!"
+            return "Press A to spin!", None
+        icon = result_icon(g.spinner, g.last_spin, size)
         if g.last_spin == WILD:
-            return "WILD: any square"
+            return "Any square!", icon
         moves = g.legal_moves()
         if any(g.board[r][c].get(g.spinner) == g.last_spin for r, c in moves):
-            return "Pick a bright square"
-        return "Any empty square"
+            return "Find it!", icon
+        return "Any empty square", icon
 
     def _draw_panels(self, now: float) -> None:
         L, g, T = self.layout, self.game, theme.T
@@ -405,20 +413,42 @@ class GameScreen:
             pygame.draw.rect(self.screen, T.card if seat in seated else T.card_idle, rect,
                              border_radius=L.margin)
             if active:
-                color = art.TILE_COLORS[g.player.color]
+                color = theme.accent(art.TILE_COLORS[g.player.color])
                 pulse = 0.5 + 0.5 * math.sin(now * 5)
-                width = max(4, int(L.margin * (0.25 + 0.15 * pulse)))
-                pygame.draw.rect(self.screen, theme.accent(color), rect.inflate(width, width), width,
+                glow = pygame.Surface(rect.inflate(L.margin * 2, L.margin * 2).size, pygame.SRCALPHA)
+                for k in range(4):  # soft outer glow
+                    grow = int(L.margin * (0.9 - k * 0.2))
+                    pygame.draw.rect(glow, color + (40 + 25 * k,), glow.get_rect().inflate(-L.margin * 2 + grow * 2,
+                                     -L.margin * 2 + grow * 2), max(3, int(L.margin * 0.25)),
+                                     border_radius=L.margin + grow)
+                self.screen.blit(glow, rect.move(-L.margin, -L.margin).topleft)
+                width = max(5, int(L.margin * (0.35 + 0.15 * pulse)))
+                pygame.draw.rect(self.screen, color, rect.inflate(width, width), width,
                                  border_radius=L.margin + width // 2)
-                self._draw_pointer(rect, seat, theme.accent(color))
-            fy = rect.bottom - rect.h * 0.085
+                self._draw_pointer(rect, seat, color)
+                flash = now - self.turn_flash
+                if 0 <= flash < TURN_FLASH:  # a new turn: a ring bursts out of the panel
+                    t = flash / TURN_FLASH
+                    ring = pygame.Surface((L.w, L.h), pygame.SRCALPHA)
+                    grow = int(L.margin * 2 * t)
+                    pygame.draw.rect(ring, color + (int(220 * (1 - t)),), rect.inflate(grow * 2, grow * 2),
+                                     max(3, int(L.margin * 0.4 * (1 - t)) + 2), border_radius=L.margin + grow)
+                    self.screen.blit(ring, (0, 0))
+            fy = rect.bottom - rect.h * 0.1
             if seat in seated:
                 _, p = seated[seat]
                 ts = int(L.h * 0.06)
                 name = L.font.render(rules.LABELS[p.color], True, T.text)
-                prompt = self._prompt() if active else ""
+                prompt, picture = self._prompt() if active else ("", None)
                 if prompt:
-                    line = L.font_small.render(prompt, True, theme.accent(art.TILE_COLORS[p.color]))
+                    words = L.font_small.render(prompt, True, theme.accent(art.TILE_COLORS[p.color]))
+                    if picture:
+                        line = pygame.Surface((picture.get_width() + 6 + words.get_width(),
+                                               max(picture.get_height(), words.get_height())), pygame.SRCALPHA)
+                        line.blit(picture, (0, (line.get_height() - picture.get_height()) // 2))
+                        line.blit(words, (picture.get_width() + 6, (line.get_height() - words.get_height()) // 2))
+                    else:
+                        line = words
                 else:
                     line = L.font_small.render(f"{p.tiles} tiles", True, T.muted)
                 total = ts + 10 + max(name.get_width(), line.get_width())
@@ -493,6 +523,74 @@ class GameScreen:
             self.screen.blit(label, label.get_rect(midbottom=(cx, cy - L.dial / 2 - 2)))
             angle = self.spin_angle(now) if feature == spinning else self.angles[feature]
             art.draw_arrow(self.screen, cx, cy, L.dial, angle, self._arrow_color(feature))
+            if (g.phase == SPIN and feature == g.spinner and not self.busy()
+                    and now - self.turn_flash > 0.3):
+                self._draw_a_button(cx, cy, now)
+
+    def _draw_a_button(self, cx, cy, now) -> None:
+        """A big, gently bouncing A button on the hub: 'press me to spin'."""
+        L = self.layout
+        r = L.dial * 0.1 * (1 + 0.08 * math.sin(now * 6))
+        shadow = pygame.Surface((int(r * 2.6), int(r * 2.6)), pygame.SRCALPHA)
+        pygame.draw.circle(shadow, (0, 0, 0, 90), (r * 1.3, r * 1.4), r)
+        self.screen.blit(shadow, (cx - r * 1.3, cy - r * 1.3))
+        pygame.draw.circle(self.screen, art.INK, (cx, cy), r + 3)
+        pygame.draw.circle(self.screen, (67, 160, 71), (cx, cy), r)
+        pygame.draw.circle(self.screen, (129, 199, 132), (cx - r * 0.25, cy - r * 0.3), r * 0.45)
+        pygame.draw.circle(self.screen, (67, 160, 71), (cx - r * 0.15, cy - r * 0.15), r * 0.5)
+        t = art.font(int(r * 1.9)).render("A", True, art.WHITE)
+        self.screen.blit(t, t.get_rect(center=(cx, cy + r * 0.05)))
+
+    def _draw_focus(self, now) -> None:
+        """Dim every panel except the active player's, so the eye goes there."""
+        g, L = self.game, self.layout
+        if g.phase not in (SPIN, PLACE) or self.pass_anim:
+            return
+        T = theme.T
+        for seat, rect in L.panels.items():
+            if seat == g.player.seat:
+                continue
+            veil = pygame.Surface(rect.size, pygame.SRCALPHA)
+            pygame.draw.rect(veil, T.bg + (150,), veil.get_rect(), border_radius=L.margin)
+            self.screen.blit(veil, rect)
+
+    def _draw_card(self, now) -> None:
+        """The spin result as a big picture card over the player's spinner."""
+        if not self.card:
+            return
+        seat, icon, words, start = self.card
+        age = now - start
+        if age < 0 or age > CARD_TIME:
+            return
+        L = self.layout
+        if age < 0.25:
+            k = ease_out_back(age / 0.25)
+        elif age > CARD_TIME - 0.25:
+            k = (CARD_TIME - age) / 0.25
+        else:
+            k = 1.0
+        if k <= 0.02:
+            return
+        if words in ("WILD!", "SPIN-A-ZOO!"):
+            colors = art.RAINBOW
+        elif words[:-1].lower() in art.SQUARE_COLORS:
+            colors = (art.SQUARE_COLORS[words[:-1].lower()],)  # "Purple!" in purple
+        else:
+            colors = ((70, 60, 80),)
+        label = art.fancy_text(words, int(L.dial * 0.14), colors,
+                               outline=art.INK if len(colors) > 1 or colors[0] != (70, 60, 80) else CARD)
+        label = art._fit(label, L.dial * 0.8, L.dial * 0.2)
+        w = int(L.dial * 0.86)
+        h = int(icon.get_height() + label.get_height() + L.dial * 0.12)
+        card = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.rect(card, CARD, card.get_rect(), border_radius=w // 8)
+        pygame.draw.rect(card, art.INK, card.get_rect(), 4, border_radius=w // 8)
+        card.blit(icon, icon.get_rect(midtop=(w / 2, L.dial * 0.05)))
+        card.blit(label, label.get_rect(midbottom=(w / 2, h - L.dial * 0.04)))
+        size = (max(1, int(w * k)), max(1, int(h * k)))
+        img = pygame.transform.smoothscale(card, size)
+        cx, cy = L.dial_center(seat)
+        self.screen.blit(img, img.get_rect(center=(cx, cy)))
 
     def _arrow_color(self, feature: str) -> tuple:
         """Arrows take the colour of the player at the spinner's seat (the
