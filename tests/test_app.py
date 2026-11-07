@@ -127,6 +127,71 @@ class AppFlowTest(unittest.TestCase):
         self.assertEqual(a.action(pygame.K_a), OK)          # keyboard keeps A = OK
         self.assertIsNone(a.action(pygame.K_SPACE))         # select does nothing
 
+    def scan(self, *names, wait=0.05):
+        """Presses as Batocera sends them: real scancodes, and the key the
+        US layout gives (other layouts give other keys; scancodes win)."""
+        for name in names:
+            ev = pygame.event.Event(pygame.KEYDOWN, key=0, mod=0,
+                                    scancode=getattr(pygame, "KSCAN_" + name))
+            self.a.frame([ev], self.now)
+            self.now += wait
+
+    def test_keys_file_matches_the_table(self):
+        import json
+        import pads
+        path = Path(__file__).resolve().parent.parent / "spinazoo" / "spinazoo.pygame.keys"
+        self.assertEqual(json.loads(path.read_text()), pads.keys_file(),
+                         "run tools/make_keys.py after changing pads.py")
+        sent = [k for keys in pads.PADS for k in keys]
+        self.assertEqual(len(sent), len(set(sent)), "two controllers share a key")
+        # nothing Batocera's default pygame mapping sends for player 1's other buttons
+        self.assertFalse(set(sent) & (set("ABHLMNRSTXY") | {"SPACE", "RETURN", "KP2", "KP4", "KP6", "KP8"}))
+
+    def test_each_controller_is_told_apart(self):
+        from game import BACK, MENU, OK, UP
+        a = self.a
+        self.assertEqual(a.read(0, pygame.KSCAN_J), (OK, 0))
+        self.assertEqual(a.read(0, pygame.KSCAN_5), (OK, 1))
+        self.assertEqual(a.read(0, pygame.KSCAN_O), (BACK, 2))
+        self.assertEqual(a.read(0, pygame.KSCAN_C), (UP, 3))
+        self.assertEqual(a.read(0, pygame.KSCAN_8), (MENU, 3))
+        # a French keyboard turns the Q key into 'a': still player 3's left, not OK
+        self.assertEqual(a.read(pygame.K_a, pygame.KSCAN_Q)[1], 2)
+        self.assertEqual(a.read(pygame.K_a, pygame.KSCAN_A), (OK, None))  # keyboard A
+        a.settings["confirm"] = "east"
+        self.assertEqual(a.read(0, pygame.KSCAN_6), (OK, 1))
+
+    def test_one_controller_each(self):
+        rules = self.rules
+        self.a.settings["controllers"] = "each"
+        self.press(pygame.K_a)               # Title: Play
+        self.assertEqual(self.scene(), "Setup")
+        s = self.a.scene
+        s.players, s.pads = [], {}
+        self.scan("LEFT", "J")              # controller 1 sits top left
+        self.scan("2", "5")                 # controller 2 moves down, sits bottom left
+        self.assertEqual(s.pads, {"TL": 0, "BL": 1})
+        self.scan("1", "5")                 # controller 2 takes over top left: no color change
+        self.assertEqual(s.pads, {"TL": 1, "BL": 1})
+        self.assertEqual(s.seat_color("TL"), "green")
+        self.scan("J")                      # controller 1 takes it back
+        self.scan("RIGHT", "J")             # start
+        self.assertEqual(self.scene(), "Play")
+        self.assertEqual(self.a.settings["pads"], {"TL": 0, "BL": 1})
+
+        g = self.a.scene.screen
+        self.assertEqual(g.game.player.seat, "TL")
+        self.played.clear()
+        self.scan("5")                      # controller 2 on controller 1's turn
+        self.assertEqual(g.game.phase, rules.SPIN)
+        self.assertIsNone(g.spin_anim)
+        self.assertIn("bonk", self.played)
+        self.scan("8")                      # but anyone can pause
+        self.assertEqual(self.scene(), "Pause")
+        self.press(pygame.K_b)
+        self.scan("J")                      # controller 1 spins
+        self.assertIsNotNone(g.spin_anim)
+
     def test_bad_settings_file_is_ignored(self):
         self.app_mod.SETTINGS.write_text('{"players": [["purple", "XX"]], "sound": "loud"}')
         s = self.app_mod.load_settings()

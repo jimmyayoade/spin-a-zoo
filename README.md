@@ -47,11 +47,18 @@ Then it's the next player's turn, clockwise.
 
 **Options > A button** swaps the pad buttons, so the east (right-hand) button confirms instead. A mouse or touch screen works too: tap your spinner to spin, then tap a square.
 
-On Batocera, `spinazoo.pygame.keys` turns every pad (players 1–4) into keys, using the button mapping set up in EmulationStation, so any player can pick up a pad on their turn.
+### More than one controller
+
+On Batocera, `spinazoo.pygame.keys` turns every pad (players 1–4, in EmulationStation's controller order) into keys, using the button mapping set up in EmulationStation. Each controller sends its own keys, so the game knows which one was pressed. **Options > Controllers** decides what that means:
+
+- **Shared** (default): any controller plays any turn. Handy when a grown-up helps, or when there's only one controller.
+- **One each**: on the setup screen, each player presses A on their own controller to sit down, and that controller is linked to the seat (its number shows in the corner of the panel). In the game, only your own controller can spin and place on your turn; anyone else's gets a bonk, and the panel of the player whose turn it is flashes. Start pauses from any controller. A seat with no controller linked (say, from last time) can be played from any controller until someone presses A on it.
+
+The keys are listed in `spinazoo/pads.py`; after changing them, run `python tools/make_keys.py` to rewrite `spinazoo.pygame.keys`.
 
 ## Options
 
-Theme (Night, Jungle, Ocean, Daylight), sound effects, music, and which pad button confirms. They're saved in `settings.json` next to the game, with the last players.
+Theme (Night, Jungle, Ocean, Daylight), sound effects, music, which pad button confirms, and controllers (shared or one each). They're saved in `settings.json` next to the game, with the last players and their controllers.
 
 ## Playing it on Batocera
 
@@ -77,7 +84,8 @@ Everything is drawn and synthesised in code, so the game needs no image or sound
 ## Credits
 
 - Font: [Fredoka](https://github.com/hafontia/Fredoka-One) by The Fredoka Project Authors, under the SIL Open Font License 1.1 (`spinazoo/fonts/OFL.txt`). `Fredoka-SemiBold.ttf` is the SemiBold weight cut from the variable font in [google/fonts](https://github.com/google/fonts/tree/main/ofl/fredoka) with `fonttools varLib.instancer Fredoka[wdth,wght].ttf wght=600 wdth=100 --update-name-table`.
+- Spinner words font: [M PLUS Rounded 1c](https://github.com/coz-m/MPLUS_FONTS) by The Rounded M+ Project Authors, under the SIL Open Font License 1.1 (`spinazoo/fonts/OFL-MPLUSRounded1c.txt`). `MPLUSRounded1c-Black.ttf` is the Black weight from [google/fonts](https://github.com/google/fonts/tree/main/ofl/mplusrounded1c), cut down to basic Latin letters with `pyftsubset MPLUSRounded1c-Black.ttf --unicodes=U+0020-007E --layout-features='*'`.
 
 ## License
 
-The game's code is MIT. The font keeps its own license (SIL OFL 1.1).
+The game's code is MIT. The fonts keep their own license (SIL OFL 1.1).

@@ -24,6 +24,10 @@ ART_DIR = Path(__file__).resolve().parent / "art"
 # letters that young players read easily.
 FONT_PATH = Path(__file__).resolve().parent / "fonts" / "Fredoka-SemiBold.ttf"
 FONT_SCALE = 0.75  # Fredoka is wider than pygame's font at the same size
+# M PLUS Rounded 1c Black (SIL OFL, fonts/OFL-MPLUSRounded1c.txt): fully
+# rounded stroke ends, for the big rainbow words (WILD!, SPIN-A-ZOO!).
+DISPLAY_PATH = Path(__file__).resolve().parent / "fonts" / "MPLUSRounded1c-Black.ttf"
+DISPLAY_SCALE = 0.72
 
 INK = (40, 32, 48)
 WHITE = (255, 255, 255)
@@ -44,10 +48,12 @@ TILE_COLORS = {
 
 
 @lru_cache(maxsize=64)
-def font(px: int) -> pygame.font.Font:
-    """The game's font at about the size pygame's own font would be at px."""
+def font(px: int, display: bool = False) -> pygame.font.Font:
+    """The game's font at about the size pygame's own font would be at px
+    (display=True: the rounded font for the big rainbow words)."""
+    path, scale = (DISPLAY_PATH, DISPLAY_SCALE) if display else (FONT_PATH, FONT_SCALE)
     try:
-        return pygame.font.Font(str(FONT_PATH), max(8, int(px * FONT_SCALE)))
+        return pygame.font.Font(str(path), max(8, int(px * scale)))
     except (OSError, pygame.error):
         return pygame.font.Font(None, px)  # font file missing: still playable
 
@@ -485,23 +491,33 @@ def _wedge(cx, cy, r, a0, a1, r0=0.0):
     return pts
 
 
+def _round_outline(t: int) -> list[tuple[int, int]]:
+    """Offsets that stamp a disc of radius t: a smooth, rounded outline."""
+    pts = set()
+    for r in range(1, t + 1):
+        n = max(8, int(r * 6.3))
+        for i in range(n):
+            a = math.tau * i / n
+            pts.add((round(math.cos(a) * r), round(math.sin(a) * r)))
+    return sorted(pts)
+
+
 def fancy_text(word: str, px: int, colors=RAINBOW, outline=INK) -> pygame.Surface:
-    """Bold text, each letter its own colour, with a dark outline."""
-    f = font(px)
-    t = max(2, px // 10)
-    letters = [(f.render(ch, True, colors[i % len(colors)]), f.render(ch, True, outline))
-               for i, ch in enumerate(word)]
-    w = sum(img.get_width() for img, _ in letters) + 2 * t
-    h = letters[0][0].get_height() + 2 * t
+    """Bold text, each letter its own colour, with a soft rounded outline."""
+    f = font(px, display=True)
+    t = max(2, px // 9)
+    letters = [f.render(ch, True, colors[i % len(colors)]) for i, ch in enumerate(word)]
+    ink = f.render(word, True, outline)
+    w = ink.get_width() + 2 * t
+    h = ink.get_height() + 2 * t
     s = pygame.Surface((w, h), pygame.SRCALPHA)
+    for dx, dy in _round_outline(t):
+        s.blit(ink, (t + dx, t + dy))
     x = t
-    for img, out in letters:
-        for dx in (-t, 0, t):
-            for dy in (-t, 0, t):
-                if dx or dy:
-                    s.blit(out, (x + dx, t + dy))
+    for i, img in enumerate(letters):
+        # place each letter where it sits in the whole word (keeps kerning)
+        x = t + f.size(word[:i])[0]
         s.blit(img, (x, t))
-        x += img.get_width()
     return s
 
 
@@ -585,23 +601,37 @@ def dial(feature: str, size: int) -> pygame.Surface:
         x, y = at(0.3, ang)
         if sec in (rules.WILD, rules.ZOO):
             # the picture is the main signal; the word sits round the rim
-            if sec == rules.WILD:
-                words = fancy_text("WILD!", int(size * 0.11))
-            else:
-                words = _stack(fancy_text("SPIN-A", int(size * 0.075)),
-                               fancy_text("ZOO!", int(size * 0.1), RAINBOW[3:] + RAINBOW[:3]))
             # write across the section, or along it on the sides, whichever
             # is nearer to level so it reads left to right
             across = (-ang + 90) % 180 - 90
             along = (90 - ang + 90) % 180 - 90
-            sym_size = 0.12
-            if abs(along) + 1 < abs(across):
-                img = pygame.transform.rotozoom(_fit(words, size * 0.22, size * 0.12), along, 1.0)
-                sym_at, x, y = 0.135, *at(0.315, ang)
-                sym_size = 0.1
+            if sec == rules.ZOO and abs(across) <= abs(along):
+                # two lines that follow the wedge: SPIN-A in the narrow part,
+                # a big ZOO! in the wide part by the rim
+                sym_at, sym_size = 0.16, 0.1
+                img = None
+                for word, dist, max_h, colors in (("SPIN-A", 0.285, 0.075, RAINBOW),
+                                                  ("ZOO!", 0.37, 0.105, RAINBOW[3:] + RAINBOW[:3])):
+                    line = fancy_text(word, int(size * 0.14), colors)
+                    w, h = line.get_size()
+                    # widest that fits the wedge at the line's inner edge:
+                    # w*k <= 0.72 * size * (dist - h*k/size/2)
+                    k = min(size * max_h / h, 0.72 * size * dist / (w + 0.36 * h))
+                    line = pygame.transform.rotozoom(line, across, k)
+                    lx, ly = at(dist, ang)
+                    out.blit(line, line.get_rect(center=(lx, ly)))
             else:
-                img = pygame.transform.rotozoom(_fit(words, size * 0.25, size * 0.14), across, 1.0)
-                sym_at, x, y = 0.18, *at(0.335, ang)
+                words = (fancy_text("WILD!", int(size * 0.11)) if sec == rules.WILD else
+                         _stack(fancy_text("SPIN-A", int(size * 0.075)),
+                                fancy_text("ZOO!", int(size * 0.1), RAINBOW[3:] + RAINBOW[:3])))
+                sym_size = 0.12
+                if abs(along) + 1 < abs(across):
+                    img = pygame.transform.rotozoom(_fit(words, size * 0.22, size * 0.12), along, 1.0)
+                    sym_at, x, y = 0.135, *at(0.315, ang)
+                    sym_size = 0.1
+                else:
+                    img = pygame.transform.rotozoom(_fit(words, size * 0.25, size * 0.14), across, 1.0)
+                    sym_at, x, y = 0.18, *at(0.335, ang)
             sym = (wild_icon if sec == rules.WILD else zoo_icon)(int(size * sym_size))
             sx, sy = at(sym_at, ang)
             out.blit(sym, sym.get_rect(center=(sx, sy)))
@@ -655,3 +685,32 @@ def draw_arrow(surf, cx, cy, size, angle_deg, color=INK):
     pygame.gfxdraw.filled_circle(surf, round(cx), round(cy), hub, color)
     pygame.gfxdraw.aacircle(surf, round(cx), round(cy), hub, INK)
     pygame.gfxdraw.filled_circle(surf, round(cx), round(cy), max(2, hub // 2), WHITE)
+
+
+@lru_cache(maxsize=16)
+def pad_icon(number: int | None, size: int, color=WHITE) -> pygame.Surface:
+    """A little game controller with a player number on it (None: no number,
+    for 'any controller')."""
+    s = canvas(size)
+    S = size * SS
+    body = pygame.Rect(S * 0.08, S * 0.22, S * 0.84, S * 0.42)
+
+    def shape(c, grow=0.0):
+        g = S * grow
+        pygame.draw.rect(s, c, body.inflate(g * 2, g * 2), border_radius=int(body.h / 2 + g))
+        for x in (0.27, 0.73):  # the two grips
+            pygame.draw.circle(s, c, (S * x, S * 0.62), S * 0.2 + g)
+    shape(INK, 0.05)
+    shape(color)
+    # D-pad on the left, two buttons on the right
+    cx, cy, a = S * 0.27, S * 0.45, S * 0.055
+    pygame.draw.rect(s, INK, (cx - a * 2.2, cy - a * 0.7, a * 4.4, a * 1.4), border_radius=int(a / 2))
+    pygame.draw.rect(s, INK, (cx - a * 0.7, cy - a * 2.2, a * 1.4, a * 4.4), border_radius=int(a / 2))
+    if number is None:
+        for dx, dy in ((0.66, 0.5), (0.8, 0.4)):
+            pygame.draw.circle(s, INK, (S * dx, S * dy), S * 0.05)
+    else:
+        f = font(int(S * 0.55), display=True)
+        t = f.render(str(number), True, INK)
+        s.blit(t, t.get_rect(center=(S * 0.72, S * 0.47)))
+    return finish(s, size)

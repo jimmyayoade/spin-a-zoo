@@ -1,10 +1,14 @@
 """Spin-A-Zoo! app: title, player setup, options, how to play, pause, main loop.
 
 Input is keyboard only. On Batocera, spinazoo.pygame.keys turns every
-configured pad (players 1-4) into keys: D-pad/left stick = arrows, the south
-button = J, the east button = K, Start = Escape. Which of J/K confirms is an
-option (south by default: A on Xbox-style pads). Hotkey + Start exits through
-Batocera (Alt+F4).
+configured pad (players 1-4) into keys, a different set per controller (see
+pads.py), so the game knows which controller pressed. Which of the south/east
+buttons confirms is an option (south by default: A on Xbox-style pads).
+Hotkey + Start exits through Batocera (Alt+F4).
+
+Controllers option: "Shared" lets any controller play any turn; "One each"
+links a controller to a seat when that player presses A on it in the setup
+screen, and then only that controller can spin and place on their turn.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from pathlib import Path
 import pygame
 
 import art
+import pads
 import rules
 import sound
 import theme
@@ -24,24 +29,36 @@ from game import BACK, DOWN, LEFT, MENU, OK, RIGHT, UP, GameScreen, Layout
 
 SETTINGS = Path(__file__).resolve().parent / "settings.json"
 
-# Keyboard keys. Keys that Batocera's default pygame mapping gives to buttons
-# we don't use (select = Space, X = X, ...) are left out, so stray presses do
-# nothing.
+# Keyboard-only keys (no controller sends them). Keys that Batocera's default
+# pygame mapping gives to buttons we don't use (select = Space, X = X, ...)
+# are left out, so stray presses do nothing.
 KEYS = {
-    pygame.K_LEFT: LEFT, pygame.K_RIGHT: RIGHT, pygame.K_UP: UP, pygame.K_DOWN: DOWN,
     pygame.K_a: OK, pygame.K_RETURN: OK, pygame.K_KP_ENTER: OK,
     pygame.K_b: BACK, pygame.K_BACKSPACE: BACK,
-    pygame.K_ESCAPE: MENU,
 }
-PAD_SOUTH, PAD_EAST = pygame.K_j, pygame.K_k  # from spinazoo.pygame.keys
+
+
+def _pad_tables():
+    """Controller keys -> (controller, button), by scancode and by key."""
+    by_scan, by_key = {}, {}
+    for pad, names in enumerate(pads.PADS):
+        for button, name in zip(pads.BUTTONS, names):
+            by_scan[getattr(pygame, "KSCAN_" + name)] = (pad, button)
+            by_key[getattr(pygame, "K_" + (name.lower() if len(name) == 1 else name))] = (pad, button)
+    return by_scan, by_key
+
+
+PAD_BY_SCAN, PAD_BY_KEY = _pad_tables()
+DIRECTIONS = {"up": UP, "down": DOWN, "left": LEFT, "right": RIGHT, "start": MENU}
 
 DEFAULT_SETUP = [("green", "TL"), ("blue", "TR")]
-DEFAULTS = {"players": DEFAULT_SETUP, "sound": True, "music": True, "theme": "Night", "confirm": "south"}
+DEFAULTS = {"players": DEFAULT_SETUP, "sound": True, "music": True, "theme": "Night", "confirm": "south",
+            "controllers": "shared", "pads": {}}
 
 
 def load_settings() -> dict:
     """Saved players and options, from settings.json next to the game."""
-    settings = {k: (list(v) if isinstance(v, list) else v) for k, v in DEFAULTS.items()}
+    settings = {k: (type(v)(v) if isinstance(v, (list, dict)) else v) for k, v in DEFAULTS.items()}
     try:
         data = json.loads(SETTINGS.read_text())
     except (OSError, ValueError):
@@ -61,6 +78,11 @@ def load_settings() -> dict:
         settings["theme"] = data["theme"]
     if data.get("confirm") in ("south", "east"):
         settings["confirm"] = data["confirm"]
+    if data.get("controllers") in ("shared", "each"):
+        settings["controllers"] = data["controllers"]
+    if isinstance(data.get("pads"), dict):
+        settings["pads"] = {seat: pad for seat, pad in data["pads"].items()
+                            if seat in rules.SEATS and type(pad) is int and 0 <= pad < len(pads.PADS)}
     return settings
 
 
@@ -210,6 +232,7 @@ class Setup(Scene):
     def __init__(self, app):
         super().__init__(app)
         self.players = list(app.settings["players"])  # (color, seat) in join order
+        self.pads = dict(app.settings["pads"])         # seat -> controller ("One each")
         self.focus = "START"
         self.start_rect = pygame.Rect(0, 0, 0, 0)
 
@@ -233,10 +256,36 @@ class Setup(Scene):
 
     def clear(self, seat):
         self.players = [(c, s) for c, s in self.players if s != seat]
+        self.pads.pop(seat, None)
+
+    @property
+    def one_each(self) -> bool:
+        return self.app.settings["controllers"] == "each"
+
+    def press_seat(self, seat):
+        """A on a seat. With one controller each, the controller that sits
+        down is linked to the seat; on a seat someone else's controller (or no
+        controller) has, the first press just takes it over, the next changes
+        the color."""
+        pad = self.app.pad
+        if self.one_each and pad is not None and self.seat_color(seat) and self.pads.get(seat) != pad:
+            self.pads[seat] = pad
+            self.app.sfx("place")
+            return
+        self.cycle(seat)
+        if not self.seat_color(seat):
+            self.pads.pop(seat, None)
+            self.app.sfx("back")
+            return
+        if self.one_each and pad is not None:
+            self.pads[seat] = pad
+        self.app.sfx("place")
 
     def start(self):
         if len(self.players) >= 2:
             self.app.settings["players"] = list(self.players)
+            seated = {s for _, s in self.players}
+            self.app.settings["pads"] = {s: p for s, p in self.pads.items() if s in seated}
             save_settings(self.app.settings)
             self.app.sfx("select")
             self.app.replace(Play(self.app, list(self.players)))
@@ -251,8 +300,7 @@ class Setup(Scene):
             if self.focus == "START":
                 self.start()
             else:
-                self.cycle(self.focus)
-                self.app.sfx("place" if self.seat_color(self.focus) else "back")
+                self.press_seat(self.focus)
         elif action == BACK:
             self.app.sfx("back")
             if self.focus != "START" and self.seat_color(self.focus):
@@ -270,7 +318,8 @@ class Setup(Scene):
         for seat, rect in self.L.panels.items():
             if rect.collidepoint(pos):
                 self.focus = seat
-                self.cycle(seat)
+                self.app.pad = None
+                self.press_seat(seat)
 
     def draw(self, now):
         s, L, T = self.app.screen, self.L, theme.T
@@ -284,6 +333,14 @@ class Setup(Scene):
                 w = max(4, int(L.margin * (0.25 + 0.15 * pulse)))
                 pygame.draw.rect(s, T.text, rect.inflate(w, w), w, border_radius=L.margin + w // 2)
             text(s, L.font_small, rules.SEAT_LABELS[seat], T.muted, midtop=(rect.centerx, rect.y + L.margin))
+            if color and self.one_each:
+                pad = self.pads.get(seat)
+                icon = art.pad_icon(None if pad is None else pad + 1, int(L.h * 0.055))
+                at = (rect.x + L.margin * 0.5, rect.bottom - L.margin * 0.5 - icon.get_height())
+                s.blit(icon, at)
+                text(s, L.font_small, "Press A on yours!" if pad is None
+                     else f"Controller {pad + 1}", T.muted,
+                     midleft=(at[0] + icon.get_width() + L.margin * 0.4, at[1] + icon.get_height() / 2))
             if color:
                 size = int(min(rect.w, rect.h) * 0.42)
                 s.blit(art.tile(color, size), art.tile(color, size).get_rect(center=rect.center))
@@ -301,13 +358,22 @@ class Setup(Scene):
         b = L.board
         pygame.draw.rect(s, T.card, b, border_radius=L.margin)
         head = text(s, L.font_big, "Who's playing?", T.text, midtop=(b.centerx, b.top + L.margin * 2))
-        lines = [
-            "Pick a seat and press A to choose a color.",
-            "Press A again for another color, B to leave.",
-            "The first one to sit down goes first.",
-            "",
-            "2 to 4 players.",
-        ]
+        if self.one_each:
+            lines = [
+                "Pick a seat and press A on your own controller.",
+                "Press A again for another color, B to leave.",
+                "The first one to sit down goes first.",
+                "",
+                "2 to 4 players, one controller each.",
+            ]
+        else:
+            lines = [
+                "Pick a seat and press A to choose a color.",
+                "Press A again for another color, B to leave.",
+                "The first one to sit down goes first.",
+                "",
+                "2 to 4 players.",
+            ]
         y = b.top + L.margin * 3 + head.get_height()
         for line in lines:
             t = text(s, L.font_small, line, T.muted, midtop=(b.centerx, y))
@@ -324,21 +390,41 @@ class Play(Scene):
     def __init__(self, app, setup):
         super().__init__(app)
         self.setup = setup
-        self.screen = GameScreen(app.screen, setup, sfx=app.sfx)
+        self.screen = GameScreen(app.screen, setup, sfx=app.sfx, pads=self.pads())
+
+    def pads(self) -> dict[str, int] | None:
+        """seat -> controller when each player has their own, else None."""
+        st = self.app.settings
+        return dict(st["pads"]) if st["controllers"] == "each" else None
 
     def handle(self, action, now):
-        if action == MENU:
+        if action == MENU:  # any controller can pause
             self.app.sfx("select")
             self.app.push(Pause(self.app, self))
         elif action == BACK:
             pass  # B does nothing in play, so it can't undo or quit by accident
+        elif self.wrong_controller():
+            if action == OK:
+                self.screen.not_your_turn(now)
         else:
             self.screen.handle(action, now)
+
+    def wrong_controller(self) -> bool:
+        """One controller each, and someone else's controller pressed on this
+        player's turn. A seat with no controller linked, and the keyboard,
+        can always play."""
+        pads_ = self.screen.pads
+        g = self.screen.game
+        if pads_ is None or g.phase not in (rules.SPIN, rules.PLACE) or self.app.pad is None:
+            return False
+        owner = pads_.get(g.player.seat)
+        return owner is not None and owner != self.app.pad
 
     def click(self, pos, now):
         self.screen.click(pos, now)
 
     def update(self, now):
+        self.screen.pads = self.pads()  # follows the option if changed from the pause menu
         self.screen.update(now)
 
     def draw(self, now):
@@ -398,7 +484,7 @@ class Pause(Menu):
 class Options(Scene):
     """Theme, sound, music and which pad button confirms."""
 
-    ROWS = ("Theme", "Sound effects", "Music", "A button", "Done")
+    ROWS = ("Theme", "Sound effects", "Music", "A button", "Controllers", "Done")
 
     def __init__(self, app):
         super().__init__(app)
@@ -415,6 +501,8 @@ class Options(Scene):
             return "On" if st["music"] else "Off"
         if row == "A button":
             return "South" if st["confirm"] == "south" else "East"
+        if row == "Controllers":
+            return "Shared" if st["controllers"] == "shared" else "One each"
         return ""
 
     def change(self, row, step=1):
@@ -430,6 +518,8 @@ class Options(Scene):
             self.app.sounds.set_music(st["music"])
         elif row == "A button":
             st["confirm"] = "east" if st["confirm"] == "south" else "south"
+        elif row == "Controllers":
+            st["controllers"] = "each" if st["controllers"] == "shared" else "shared"
         save_settings(st)
         self.app.sfx("select")
 
@@ -464,8 +554,8 @@ class Options(Scene):
         s, L, T = self.app.screen, self.L, theme.T
         background(self.app)
         text(s, L.font_big, "Options", T.text, midtop=(L.w / 2, L.margin * 2))
-        step = L.h * 0.12
-        y0 = L.h * 0.27
+        step = L.h * 0.105
+        y0 = L.h * 0.25
         self.rects = []
         for i, row in enumerate(self.ROWS):
             label = row if row == "Done" else f"{row}:  < {self.value(row)} >"
@@ -476,6 +566,8 @@ class Options(Scene):
             "A button": "South = the bottom button (A on Xbox-style pads). East = the right one.",
             "Music": "A little tune while you play.",
             "Sound effects": "Spins, animal calls, cheers.",
+            "Controllers": ("Shared: any controller plays any turn." if self.app.settings["controllers"] == "shared"
+                            else "One each: only your own controller plays your turn. Pick it when you sit down."),
         }
         note = notes.get(self.ROWS[self.focus], "")
         if note:
@@ -541,6 +633,7 @@ class App:
         self.layout = Layout(*screen.get_size())
         self.stack: list[Scene] = []
         self.running = True
+        self.pad: int | None = None  # controller behind the last press (None: keyboard/mouse)
         self.settings = load_settings()
         theme.use(self.settings["theme"])
         self.sounds = sound.Sounds(self.settings["sound"], self.settings["music"])
@@ -565,12 +658,20 @@ class App:
     def replace_all(self, scene: Scene) -> None:
         self.stack = [scene]
 
+    def read(self, key: int, scancode: int | None = None) -> tuple[str | None, int | None]:
+        """What a key press means: (action, controller). Controller keys are
+        found by scancode, so the keyboard layout doesn't matter; the key is
+        only used when there's no scancode (tests)."""
+        hit = PAD_BY_SCAN.get(scancode) if scancode else PAD_BY_KEY.get(key)
+        if hit is None:
+            return KEYS.get(key), None
+        pad, button = hit
+        if button in ("south", "east"):
+            return (OK if button == self.settings["confirm"] else BACK), pad
+        return DIRECTIONS[button], pad
+
     def action(self, key: int) -> str | None:
-        """Which game action a key press means (pad buttons depend on options)."""
-        if key in (PAD_SOUTH, PAD_EAST):
-            confirm = PAD_SOUTH if self.settings["confirm"] == "south" else PAD_EAST
-            return OK if key == confirm else BACK
-        return KEYS.get(key)
+        return self.read(key)[0]
 
     def frame(self, events, now: float) -> None:
         for event in events:
@@ -580,10 +681,11 @@ class App:
                 if event.key == pygame.K_F4 and event.mod & pygame.KMOD_ALT:
                     self.running = False
                 else:
-                    action = self.action(event.key)
+                    action, self.pad = self.read(event.key, getattr(event, "scancode", None))
                     if action:
                         self.scene.handle(action, now)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                self.pad = None
                 self.scene.click(event.pos, now)
             if not self.running:
                 return

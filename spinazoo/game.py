@@ -127,9 +127,12 @@ def result_icon(feature: str, section: str, size: int) -> pygame.Surface:
 
 class GameScreen:
     def __init__(self, screen: pygame.Surface, setup: list[tuple[str, str]], seed: int | None = None,
-                 sfx=None):
+                 sfx=None, pads: dict[str, int] | None = None):
         self.screen = screen
         self.setup = setup
+        # "One each" controllers: seat -> controller number (0-3). None when
+        # every controller plays every turn.
+        self.pads = pads
         self.sfx = sfx or (lambda name: None)  # play a sound by name
         self.layout = Layout(*screen.get_size())
         self.rng = random.Random(seed)
@@ -211,6 +214,13 @@ class GameScreen:
                 self.sfx("blip")
             elif action == OK:
                 self.try_place(r, c, now)
+
+    def not_your_turn(self, now: float) -> None:
+        """Someone pressed on another player's turn: bonk, and flash the
+        panel of the player whose turn it is."""
+        self.sfx("bonk")
+        if now - self.turn_flash > TURN_FLASH:
+            self.turn_flash = now
 
     def click(self, pos: tuple[int, int], now: float) -> None:
         """Mouse or touch: tap the active spinner to spin, a square to place."""
@@ -457,6 +467,10 @@ class GameScreen:
                 self.screen.blit(name, (x + ts + 10, fy - name.get_height() + 4))
                 self.screen.blit(line, (x + ts + 10, fy + 4))
                 self._draw_wins(rect, self.wins.get(p.color, 0))
+                if self.pads is not None:
+                    pad = self.pads.get(seat)
+                    icon = art.pad_icon(None if pad is None else pad + 1, int(L.h * 0.055))
+                    self.screen.blit(icon, (rect.x + L.margin * 0.5, rect.y + L.margin * 0.3))
             else:
                 t = L.font_small.render("Empty seat", True, T.muted)
                 self.screen.blit(t, t.get_rect(center=(rect.centerx, fy)))

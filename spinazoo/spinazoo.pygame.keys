@@ -83,77 +83,77 @@
       "trigger": "up",
       "type": "key",
       "target": [
-        "KEY_UP"
+        "KEY_1"
       ]
     },
     {
       "trigger": "down",
       "type": "key",
       "target": [
-        "KEY_DOWN"
+        "KEY_2"
       ]
     },
     {
       "trigger": "left",
       "type": "key",
       "target": [
-        "KEY_LEFT"
+        "KEY_3"
       ]
     },
     {
       "trigger": "right",
       "type": "key",
       "target": [
-        "KEY_RIGHT"
+        "KEY_4"
       ]
     },
     {
       "trigger": "joystick1up",
       "type": "key",
       "target": [
-        "KEY_UP"
+        "KEY_1"
       ]
     },
     {
       "trigger": "joystick1down",
       "type": "key",
       "target": [
-        "KEY_DOWN"
+        "KEY_2"
       ]
     },
     {
       "trigger": "joystick1left",
       "type": "key",
       "target": [
-        "KEY_LEFT"
+        "KEY_3"
       ]
     },
     {
       "trigger": "joystick1right",
       "type": "key",
       "target": [
-        "KEY_RIGHT"
+        "KEY_4"
       ]
     },
     {
       "trigger": "b",
       "type": "key",
       "target": [
-        "KEY_J"
+        "KEY_5"
       ]
     },
     {
       "trigger": "a",
       "type": "key",
       "target": [
-        "KEY_K"
+        "KEY_6"
       ]
     },
     {
       "trigger": "start",
       "type": "key",
       "target": [
-        "KEY_ESC"
+        "KEY_7"
       ]
     }
   ],
@@ -162,77 +162,77 @@
       "trigger": "up",
       "type": "key",
       "target": [
-        "KEY_UP"
+        "KEY_Q"
       ]
     },
     {
       "trigger": "down",
       "type": "key",
       "target": [
-        "KEY_DOWN"
+        "KEY_W"
       ]
     },
     {
       "trigger": "left",
       "type": "key",
       "target": [
-        "KEY_LEFT"
+        "KEY_E"
       ]
     },
     {
       "trigger": "right",
       "type": "key",
       "target": [
-        "KEY_RIGHT"
+        "KEY_U"
       ]
     },
     {
       "trigger": "joystick1up",
       "type": "key",
       "target": [
-        "KEY_UP"
+        "KEY_Q"
       ]
     },
     {
       "trigger": "joystick1down",
       "type": "key",
       "target": [
-        "KEY_DOWN"
+        "KEY_W"
       ]
     },
     {
       "trigger": "joystick1left",
       "type": "key",
       "target": [
-        "KEY_LEFT"
+        "KEY_E"
       ]
     },
     {
       "trigger": "joystick1right",
       "type": "key",
       "target": [
-        "KEY_RIGHT"
+        "KEY_U"
       ]
     },
     {
       "trigger": "b",
       "type": "key",
       "target": [
-        "KEY_J"
+        "KEY_I"
       ]
     },
     {
       "trigger": "a",
       "type": "key",
       "target": [
-        "KEY_K"
+        "KEY_O"
       ]
     },
     {
       "trigger": "start",
       "type": "key",
       "target": [
-        "KEY_ESC"
+        "KEY_P"
       ]
     }
   ],
@@ -241,77 +241,77 @@
       "trigger": "up",
       "type": "key",
       "target": [
-        "KEY_UP"
+        "KEY_C"
       ]
     },
     {
       "trigger": "down",
       "type": "key",
       "target": [
-        "KEY_DOWN"
+        "KEY_D"
       ]
     },
     {
       "trigger": "left",
       "type": "key",
       "target": [
-        "KEY_LEFT"
+        "KEY_F"
       ]
     },
     {
       "trigger": "right",
       "type": "key",
       "target": [
-        "KEY_RIGHT"
+        "KEY_G"
       ]
     },
     {
       "trigger": "joystick1up",
       "type": "key",
       "target": [
-        "KEY_UP"
+        "KEY_C"
       ]
     },
     {
       "trigger": "joystick1down",
       "type": "key",
       "target": [
-        "KEY_DOWN"
+        "KEY_D"
       ]
     },
     {
       "trigger": "joystick1left",
       "type": "key",
       "target": [
-        "KEY_LEFT"
+        "KEY_F"
       ]
     },
     {
       "trigger": "joystick1right",
       "type": "key",
       "target": [
-        "KEY_RIGHT"
+        "KEY_G"
       ]
     },
     {
       "trigger": "b",
       "type": "key",
       "target": [
-        "KEY_J"
+        "KEY_V"
       ]
     },
     {
       "trigger": "a",
       "type": "key",
       "target": [
-        "KEY_K"
+        "KEY_Z"
       ]
     },
     {
       "trigger": "start",
       "type": "key",
       "target": [
-        "KEY_ESC"
+        "KEY_8"
       ]
     }
   ]
