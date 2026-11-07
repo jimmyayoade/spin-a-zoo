@@ -34,7 +34,7 @@ for c in range(5):
     x = strip.x + gap + c * (cell + gap)
     s.blit(art.square(board[1][c], cell), (x, strip.y + gap))
 for c, color in ((1, "red"), (3, "blue")):
-    t = art.tile(color, int(cell * 0.74))
+    t = art.tile(color, int(cell * 1.02))
     s.blit(t, t.get_rect(center=(strip.x + gap + c * (cell + gap) + cell / 2, strip.centery)))
 
 # spinner on each side, title and animals in the middle

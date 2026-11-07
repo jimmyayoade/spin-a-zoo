@@ -29,7 +29,7 @@ Each spinner has 8 sections: its 5 values, 2 **Wild** and 1 **Spin-A-Zoo!**
 | **Wild** | Play on any square, even on top of another tile, as long as the stack has fewer than 4. |
 | **Spin-A-Zoo!** | Everyone passes their spinner clockwise: top left → top right → bottom right → bottom left (including the empty seats' spinners), then you spin again. |
 
-Then it's the next player's turn, clockwise.
+Then it's the next player's turn, clockwise. A random player goes first in the first game; after that, the next player clockwise starts each new game.
 
 **Win:** be the first to get 4 of your tiles in a row: across, down or diagonally. Only the top tile of a stack counts.
 
@@ -58,7 +58,9 @@ The keys are listed in `spinazoo/pads.py`; after changing them, run `python tool
 
 ## Options
 
-Theme (Night, Jungle, Ocean, Daylight), sound effects, music, which pad button confirms, and controllers (shared or one each). They're saved in `settings.json` next to the game, with the last players and their controllers.
+**Calm** (on by default) keeps the game gentle for young players: outlines stay steady instead of pulsing, there are no flashes or bursts, a little confetti falls over the winner's panel only, and the music is slower and softer, with no drums. Turn it off for the full party.
+
+Also: theme (Night, Jungle, Ocean, Daylight), sound effects, music (off, playful, jazz or classical: all made up for the game and played by the code), which pad button confirms, and controllers (shared or one each). They're saved in `settings.json` next to the game, with the last players and their controllers.
 
 ## Playing it on Batocera
 
@@ -79,7 +81,7 @@ python3 -m unittest discover -s tests
 Everything is drawn and synthesised in code, so the game needs no image or sound files. You can still swap in your own:
 
 - **Pictures:** a PNG named `elephant.png`, `cat.png`, `eagle.png`, `lion.png` or `bear.png` in `spinazoo/art/` replaces that animal's drawing everywhere.
-- **Sounds:** an `.ogg` or `.wav` in `spinazoo/sounds/` named after an effect replaces it: `lion`, `cat`, `eagle`, `bear`, `elephant` (animal results), `color`, `shape`, `pattern`, `wild`, `zoo`, `any`, `spin`, `tick`, `stop`, `place`, `bonk`, `turn`, `win`, `draw`, `blip`, `select`, `back`. `music.ogg` replaces the music.
+- **Sounds:** an `.ogg` or `.wav` in `spinazoo/sounds/` named after an effect replaces it: `lion`, `cat`, `eagle`, `bear`, `elephant` (animal results), `color`, `shape`, `pattern`, `wild`, `zoo`, `any`, `spin`, `tick`, `stop`, `place`, `bonk`, `turn`, `win`, `draw`, `blip`, `select`, `back`. `music-playful.ogg`, `music-jazz.ogg` or `music-classical.ogg` replaces that tune, and `music.ogg` replaces all three.
 
 ## Credits
 

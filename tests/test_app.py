@@ -102,7 +102,10 @@ class AppFlowTest(unittest.TestCase):
         self.assertEqual(self.scene(), "Title")
         self.press(K.K_DOWN, K.K_DOWN, K.K_a)              # Options
         self.assertEqual(self.scene(), "Options")
-        self.press(K.K_RIGHT)                              # Theme: next
+        self.assertTrue(self.a.settings["calm"])           # calm by default
+        self.press(K.K_a)                                  # Calm: off
+        self.assertFalse(self.a.settings["calm"])
+        self.press(K.K_DOWN, K.K_RIGHT)                    # Theme: next
         self.assertEqual(self.a.settings["theme"], "Jungle")
         self.press(K.K_DOWN, K.K_a)                        # Sound effects: off
         self.assertFalse(self.a.sounds.enabled)
@@ -111,6 +114,7 @@ class AppFlowTest(unittest.TestCase):
         saved = self.app_mod.load_settings()
         self.assertEqual(saved["sound"], False)
         self.assertEqual(saved["theme"], "Jungle")
+        self.assertFalse(saved["calm"])
         self.assertEqual(saved["players"], [("blue", "TL"), ("green", "BR")])
         self.press(K.K_b)
         self.assertEqual(self.scene(), "Title")
@@ -180,17 +184,61 @@ class AppFlowTest(unittest.TestCase):
         self.assertEqual(self.a.settings["pads"], {"TL": 0, "BL": 1})
 
         g = self.a.scene.screen
-        self.assertEqual(g.game.player.seat, "TL")
+        # whoever goes first: the other player's controller is turned away
+        mine, theirs = ("J", "5") if g.game.player.seat == "TL" else ("5", "J")
         self.played.clear()
-        self.scan("5")                      # controller 2 on controller 1's turn
+        self.scan(theirs)                   # the wrong controller
         self.assertEqual(g.game.phase, rules.SPIN)
         self.assertIsNone(g.spin_anim)
         self.assertIn("bonk", self.played)
         self.scan("8")                      # but anyone can pause
         self.assertEqual(self.scene(), "Pause")
         self.press(pygame.K_b)
-        self.scan("J")                      # controller 1 spins
+        self.scan(mine)                     # the right one spins
         self.assertIsNotNone(g.spin_anim)
+
+    def test_first_player_changes_each_round(self):
+        from game import GameScreen
+        setup = [("green", "TL"), ("blue", "TR"), ("red", "BR")]
+        starters = []
+        for seed in range(6):
+            g = GameScreen(self.screen, setup, seed=seed)
+            seats = [g.game.player.seat]
+            for _ in range(3):
+                g.new_round()
+                seats.append(g.game.player.seat)
+            # the next player clockwise starts each new round
+            order = [p.seat for p in g.game.players]
+            i = order.index(seats[0])
+            self.assertEqual(seats, [order[(i + k) % 3] for k in range(4)])
+            starters.append(seats[0])
+        self.assertGreater(len(set(starters)), 1)  # and the first round is random
+
+    def test_music_option_picks_a_tune(self):
+        a = self.a
+        a.push(self.app_mod.Options(a))
+        opts = a.scene
+        seen = []
+        for _ in range(4):
+            opts.change("Music")
+            seen.append((a.settings["music"], a.settings["tune"]))
+        self.assertEqual(seen, [(True, "jazz"), (True, "classical"), (False, "classical"), (True, "playful")])
+        opts.change("Music", -1)
+        self.assertFalse(a.settings["music"])
+        self.assertEqual(self.app_mod.load_settings()["tune"], "playful")
+
+    def test_every_tune_makes_a_loop(self):
+        import sound
+        for tune in sound.TUNES:
+            s = sound.music(True, tune)
+            self.assertGreater(len(s), sound.RATE * 10, tune)
+            self.assertLess(max(abs(v) for v in s), 1.0, tune)   # no clipping
+            self.assertGreater(max(abs(v) for v in s), 0.1, tune)
+
+    def test_calm_is_the_default(self):
+        self.assertTrue(self.app_mod.load_settings()["calm"])
+        self.app_mod.SETTINGS.write_text('{"calm": false}')
+        self.assertFalse(self.app_mod.load_settings()["calm"])
 
     def test_bad_settings_file_is_ignored(self):
         self.app_mod.SETTINGS.write_text('{"players": [["purple", "XX"]], "sound": "loud"}')

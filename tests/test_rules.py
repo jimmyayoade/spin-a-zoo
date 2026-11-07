@@ -88,6 +88,14 @@ class SetupTest(unittest.TestCase):
         g = game([("red", "BR"), ("green", "TL"), ("blue", "BL")])
         self.assertEqual([p.seat for p in g.players], ["BR", "BL", "TL"])
 
+    def test_any_player_can_go_first(self):
+        setup = [("red", "BR"), ("green", "TL"), ("blue", "BL")]
+        g = Game.new(setup, random.Random(1), first=2)
+        self.assertEqual(g.player.seat, "TL")
+        g.resolve(WILD)
+        g.place(0, 0)  # then the turn goes on clockwise, wrapping round
+        self.assertEqual(g.player.seat, "BR")
+
     def test_everyone_starts_with_16_tiles(self):
         g = game([("red", "BR"), ("green", "TL"), ("blue", "BL"), ("yellow", "TR")])
         self.assertTrue(all(p.tiles == 16 for p in g.players))

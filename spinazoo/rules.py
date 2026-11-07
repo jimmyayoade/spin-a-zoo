@@ -150,7 +150,10 @@ class Game:
     win_line: tuple[tuple[int, int], ...] | None = field(init=False, default=None)
 
     @classmethod
-    def new(cls, setup: list[tuple[str, str]], rng: random.Random | None = None) -> Game:
+    def new(cls, setup: list[tuple[str, str]], rng: random.Random | None = None,
+            first: int = 0) -> Game:
+        """A new game. Players sit clockwise from the first one given; the
+        one at index `first` in that order takes the first turn."""
         if not 2 <= len(setup) <= 4:
             raise ValueError("Spin-A-Zoo! needs 2 to 4 players")
         colors = [c for c, _ in setup]
@@ -160,9 +163,11 @@ class Game:
         if len(set(seats)) != len(seats) or not set(seats) <= set(SEATS):
             raise ValueError(f"each player needs a different seat from {SEATS}")
         # Order players clockwise, starting with the first one given.
-        first = SEATS.index(seats[0])
-        order = sorted(setup, key=lambda p: (SEATS.index(p[1]) - first) % len(SEATS))
-        return cls([Player(c, s) for c, s in order], rng or random.Random())
+        start = SEATS.index(seats[0])
+        order = sorted(setup, key=lambda p: (SEATS.index(p[1]) - start) % len(SEATS))
+        game = cls([Player(c, s) for c, s in order], rng or random.Random())
+        game.turn = first % len(game.players)
+        return game
 
     def __post_init__(self) -> None:
         self.board = make_board(self.rng)

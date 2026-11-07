@@ -33,6 +33,7 @@ shot("1-spinning", g, 1.7)
 
 # 2. place phase after a value spin, with some tiles and a stack
 g = game.GameScreen(screen, [("green", "TL"), ("yellow", "BR")], seed=5)
+g.announce = False  # set up mid-game: no "goes first" banner
 gm = g.game
 for (r, c), who in {(0, 0): 0, (1, 1): 1, (2, 2): 0, (3, 1): 1, (4, 4): 0}.items():
     gm.stacks[r][c].append(who)
@@ -45,6 +46,7 @@ shot("2-place", g, 7.5)
 
 # 3. a win
 g = game.GameScreen(screen, [("green", "TL"), ("blue", "TR"), ("yellow", "BR"), ("red", "BL")], seed=8)
+g.announce = False  # set up mid-game: no "goes first" banner
 gm = g.game
 for c in range(3):
     gm.stacks[1][c].append(3)
@@ -81,6 +83,7 @@ print(out / "7-pause.png")
 
 # 8. win with confetti, a moment after the winning tile
 g = game.GameScreen(screen, [("green", "TL"), ("blue", "TR"), ("yellow", "BR"), ("red", "BL")], seed=8)
+g.announce = False  # set up mid-game: no "goes first" banner
 gm = g.game
 for c in range(3):
     gm.stacks[2][c + 1].append(1)

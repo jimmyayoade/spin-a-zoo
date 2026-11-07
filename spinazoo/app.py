@@ -53,7 +53,7 @@ DIRECTIONS = {"up": UP, "down": DOWN, "left": LEFT, "right": RIGHT, "start": MEN
 
 DEFAULT_SETUP = [("green", "TL"), ("blue", "TR")]
 DEFAULTS = {"players": DEFAULT_SETUP, "sound": True, "music": True, "theme": "Night", "confirm": "south",
-            "controllers": "shared", "pads": {}}
+            "controllers": "shared", "pads": {}, "calm": True, "tune": "playful"}
 
 
 def load_settings() -> dict:
@@ -71,9 +71,11 @@ def load_settings() -> dict:
         settings["players"] = setup
     except (ValueError, KeyError, TypeError):
         pass
-    for key in ("sound", "music"):
+    for key in ("sound", "music", "calm"):
         if isinstance(data.get(key), bool):
             settings[key] = data[key]
+    if data.get("tune") in sound.TUNES:
+        settings["tune"] = data["tune"]
     if data.get("theme") in theme.THEMES:
         settings["theme"] = data["theme"]
     if data.get("confirm") in ("south", "east"):
@@ -110,8 +112,10 @@ def button(surf, L: Layout, label: str, center, focused: bool, enabled: bool = T
     return rect
 
 
-def title_logo(surf, L: Layout, center, now: float, scale: float = 1.0) -> None:
-    """'Spin-A-Zoo!' in bouncing, colored letters."""
+def title_logo(surf, L: Layout, center, now: float, scale: float = 1.0, still: bool = False) -> None:
+    """'Spin-A-Zoo!' in bouncing (or, still, gently wavy) colored letters."""
+    if still:
+        now = 0.0
     font = art.font(int(L.h * 0.16 * scale))
     colors = [art.SQUARE_COLORS[c] for c in ("red", "blue", "yellow", "green", "purple")]
     word = "Spin-A-Zoo!"
@@ -202,7 +206,7 @@ class Title(Menu):
     def draw(self, now):
         s, L = self.app.screen, self.L
         background(self.app)
-        title_logo(s, L, (L.w / 2, L.h * 0.19), now)
+        title_logo(s, L, (L.w / 2, L.h * 0.19), now, still=self.app.settings["calm"])
         size = int(L.h * 0.15)
         names = rules.VALUES["animal"]
         gap = size * 1.25
@@ -390,7 +394,8 @@ class Play(Scene):
     def __init__(self, app, setup):
         super().__init__(app)
         self.setup = setup
-        self.screen = GameScreen(app.screen, setup, sfx=app.sfx, pads=self.pads())
+        self.screen = GameScreen(app.screen, setup, sfx=app.sfx, pads=self.pads(),
+                                 calm=app.settings["calm"])
 
     def pads(self) -> dict[str, int] | None:
         """seat -> controller when each player has their own, else None."""
@@ -424,7 +429,9 @@ class Play(Scene):
         self.screen.click(pos, now)
 
     def update(self, now):
-        self.screen.pads = self.pads()  # follows the option if changed from the pause menu
+        # follow the options if changed from the pause menu
+        self.screen.pads = self.pads()
+        self.screen.calm = self.app.settings["calm"]
         self.screen.update(now)
 
     def draw(self, now):
@@ -482,9 +489,9 @@ class Pause(Menu):
 
 
 class Options(Scene):
-    """Theme, sound, music and which pad button confirms."""
+    """Calm, theme, sound, music, which pad button confirms and controllers."""
 
-    ROWS = ("Theme", "Sound effects", "Music", "A button", "Controllers", "Done")
+    ROWS = ("Calm", "Theme", "Sound effects", "Music", "A button", "Controllers", "Done")
 
     def __init__(self, app):
         super().__init__(app)
@@ -493,12 +500,14 @@ class Options(Scene):
 
     def value(self, row) -> str:
         st = self.app.settings
+        if row == "Calm":
+            return "On" if st["calm"] else "Off"
         if row == "Theme":
             return st["theme"]
         if row == "Sound effects":
             return "On" if st["sound"] else "Off"
         if row == "Music":
-            return "On" if st["music"] else "Off"
+            return st["tune"].capitalize() if st["music"] else "Off"
         if row == "A button":
             return "South" if st["confirm"] == "south" else "East"
         if row == "Controllers":
@@ -507,14 +516,23 @@ class Options(Scene):
 
     def change(self, row, step=1):
         st = self.app.settings
-        if row == "Theme":
+        if row == "Calm":
+            st["calm"] = not st["calm"]
+            self.app.sounds.set_calm(st["calm"])
+        elif row == "Theme":
             names = theme.ORDER
             st["theme"] = names[(names.index(st["theme"]) + step) % len(names)]
             theme.use(st["theme"])
         elif row == "Sound effects":
             st["sound"] = self.app.sounds.enabled = not st["sound"]
-        elif row == "Music":
-            st["music"] = not st["music"]
+        elif row == "Music":  # Off, then each tune
+            choices = [None, *sound.TUNES]
+            now_at = choices.index(st["tune"] if st["music"] else None)
+            pick = choices[(now_at + step) % len(choices)]
+            st["music"] = pick is not None
+            if pick:
+                st["tune"] = pick
+                self.app.sounds.set_tune(pick)
             self.app.sounds.set_music(st["music"])
         elif row == "A button":
             st["confirm"] = "east" if st["confirm"] == "south" else "south"
@@ -554,17 +572,21 @@ class Options(Scene):
         s, L, T = self.app.screen, self.L, theme.T
         background(self.app)
         text(s, L.font_big, "Options", T.text, midtop=(L.w / 2, L.margin * 2))
-        step = L.h * 0.105
-        y0 = L.h * 0.25
+        step = L.h * 0.093
+        y0 = L.h * 0.23
         self.rects = []
         for i, row in enumerate(self.ROWS):
             label = row if row == "Done" else f"{row}:  < {self.value(row)} >"
             self.rects.append(button(s, L, label, (L.w / 2, y0 + i * step), i == self.focus,
                                      width=int(L.w * 0.42)))
         notes = {
+            "Calm": ("On: steady lights, no flashing, a little confetti and softer music." if self.app.settings["calm"]
+                     else "Off: pulsing lights, flashes, lots of confetti and livelier music."),
             "Theme": "The colors around the board.",
             "A button": "South = the bottom button (A on Xbox-style pads). East = the right one.",
-            "Music": "A little tune while you play.",
+            "Music": {"Off": "No music.", "Playful": "A bouncy little tune.",
+                      "Jazz": "A gentle swing tune: walking bass, piano and vibraphone.",
+                      "Classical": "A light classical piece: harpsichord and flute."}[self.value("Music")],
             "Sound effects": "Spins, animal calls, cheers.",
             "Controllers": ("Shared: any controller plays any turn." if self.app.settings["controllers"] == "shared"
                             else "One each: only your own controller plays your turn. Pick it when you sit down."),
@@ -636,7 +658,8 @@ class App:
         self.pad: int | None = None  # controller behind the last press (None: keyboard/mouse)
         self.settings = load_settings()
         theme.use(self.settings["theme"])
-        self.sounds = sound.Sounds(self.settings["sound"], self.settings["music"])
+        self.sounds = sound.Sounds(self.settings["sound"], self.settings["music"], self.settings["calm"],
+                                   self.settings["tune"])
 
     def sfx(self, name: str) -> None:
         self.sounds.play(name)

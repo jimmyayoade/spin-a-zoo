@@ -138,25 +138,32 @@ def _note(surf, color, x, y, u):
     pygame.draw.line(surf, color, (x + 1.2 * u, y - 4.5 * u), (x + 3.0 * u, y - 3.0 * u), max(1, int(u * 0.7)))
 
 
-def _leaf(surf, color, x, y, u, angle):
+def _leaf(surf, color, x, y, u, angle, vein=None):
+    """A long pointed leaf with a stem and a midrib in vein (the background
+    colour), so it can't be mistaken for a dot."""
+    ca, sa = math.cos(angle), math.sin(angle)
+
+    def P(px, py):
+        return (x + px * ca - py * sa, y + px * sa + py * ca)
     pts = []
     for i in range(13):
         t = i / 12
-        # leaf outline: two arcs meeting at the tips
-        a = math.pi * t
-        px, py = -3 * u + 6 * u * t, 1.6 * u * math.sin(a)
+        # outline: fuller near the stem, a sharp tip
+        px, py = -2.6 * u + 6.4 * u * t, 1.55 * u * math.sin(math.pi * t) * (1.15 - 0.3 * t)
         pts.append((px, py))
     pts += [(px, -py) for px, py in reversed(pts)]
-    ca, sa = math.cos(angle), math.sin(angle)
-    pts = [(x + px * ca - py * sa, y + px * sa + py * ca) for px, py in pts]
-    pygame.draw.polygon(surf, color, pts)
-    pygame.draw.line(surf, shade(color, 0.8), pts[0], pts[12], max(1, int(u * 0.35)))
+    pygame.draw.polygon(surf, color, [P(*p) for p in pts])
+    w = max(1, int(u * 0.5))
+    pygame.draw.line(surf, color, P(-2.6 * u, 0), P(-4.0 * u, 0), w)   # stem
+    if vein:
+        pygame.draw.line(surf, vein, P(-2.2 * u, 0), P(2.8 * u, 0), w)  # midrib
 
 
-def draw_pattern(surf, pattern, rect, color, unit=None):
+def draw_pattern(surf, pattern, rect, color, unit=None, bg=None):
     """Fill rect with a pattern. unit sets its scale (default: 1/30 of the
     width, which suits a board square); larger areas pass a unit to keep the
-    pattern the same size instead of stretching it."""
+    pattern the same size instead of stretching it. bg is the colour under
+    it (for the leaves' midribs)."""
     x0, y0, w, h = rect
     u = unit or w / 30
     clip = surf.get_clip()
@@ -172,7 +179,7 @@ def draw_pattern(surf, pattern, rect, color, unit=None):
         for row in range(int(h / step) + 2):
             off = step / 2 if row % 2 else 0
             for col in range(int(w / step) + 2):
-                pygame.draw.circle(surf, color, (x0 + col * step + off, y0 + row * step + step / 2), 1.36 * u)
+                pygame.draw.circle(surf, color, (x0 + col * step + off, y0 + row * step + step / 2), 0.95 * u)
     elif pattern == "zigzag":
         step, seg = 6 * u, 3 * u
         for row in range(int(h / step) + 2):
@@ -191,8 +198,8 @@ def draw_pattern(surf, pattern, rect, color, unit=None):
         for row in range(int(h / step) + 2):
             off = step / 2 if row % 2 else 0
             for col in range(int(w / step) + 2):
-                _leaf(surf, color, x0 + col * step + off - step / 4, y0 + row * step + step / 2, u,
-                      math.radians(35 if (row + col) % 2 else -35))
+                _leaf(surf, color, x0 + col * step + off - step / 4 + u, y0 + row * step + step / 2, u,
+                      math.radians(35 if (row + col) % 2 else -35), bg or shade(color, 0.6))
     else:
         surf.set_clip(clip)
         raise ValueError(pattern)
@@ -207,8 +214,9 @@ def pattern_swatch(pattern: str, size: int) -> pygame.Surface:
     style = SPINNER_STYLE["pattern"]
     k = rules.VALUES["pattern"].index(pattern)
     body = pygame.Surface((S, S), pygame.SRCALPHA)
-    body.fill(style["sections"][k])
-    draw_pattern(body, pattern, (0, 0, S, S), style["ink"][k], unit=S / 22)
+    bg = style["sections"][k]
+    body.fill(bg)
+    draw_pattern(body, pattern, (0, 0, S, S), style["ink"][k], unit=S / 22, bg=bg)
     mask = pygame.Surface((S, S), pygame.SRCALPHA)
     pygame.draw.circle(mask, WHITE, (S / 2, S / 2), S * 0.44)
     body.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
@@ -351,7 +359,7 @@ def square(sq: rules.Square, size: int) -> pygame.Surface:
     radius = S // 10
     body = pygame.Surface((S, S), pygame.SRCALPHA)
     body.fill(bg)
-    draw_pattern(body, sq.pattern, (0, 0, S, S), pattern_ink(bg))
+    draw_pattern(body, sq.pattern, (0, 0, S, S), pattern_ink(bg), bg=bg)
     mask = pygame.Surface((S, S), pygame.SRCALPHA)
     pygame.draw.rect(mask, WHITE, (0, 0, S, S), border_radius=radius)
     body.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
@@ -434,6 +442,7 @@ SPINNER_STYLE = {
                "sections": ((38, 166, 154), (124, 179, 66))},
 }
 RAINBOW = ((229, 57, 53), (251, 140, 0), (253, 216, 53), (67, 160, 71), (30, 136, 229), (142, 36, 170))
+WILD_WORD = ((142, 36, 170),)  # WILD! in one colour; SPIN-A-ZOO! keeps the rainbow
 WILD_BG = (255, 255, 255)
 ZOO_BG = (255, 224, 70)
 
@@ -563,14 +572,9 @@ def dial(feature: str, size: int) -> pygame.Surface:
     sections = rules.spinner_sections(feature)
     values = rules.VALUES[feature]
 
-    # rim with carnival lights
+    # a plain coloured rim
     pygame.draw.circle(s, INK, (c, c), rim_out)
     pygame.draw.circle(s, style["rim"], (c, c), rim_out - S * 0.008)
-    for k in range(24):
-        a = math.radians(k * 15 + 7.5 - 90)
-        rad = (r + rim_out) / 2
-        pygame.draw.circle(s, (255, 248, 200) if k % 2 else WHITE,
-                           (c + rad * math.cos(a), c + rad * math.sin(a)), S * 0.012)
 
     for i, sec in enumerate(sections):
         a = section_angle(i)
@@ -579,16 +583,14 @@ def dial(feature: str, size: int) -> pygame.Surface:
             pygame.draw.polygon(s, WILD_BG, wedge)
         elif sec == rules.ZOO:
             pygame.draw.polygon(s, ZOO_BG, wedge)
-            for k in range(9):  # sunburst rays
-                ra = a - 22.5 + k * 5
-                pygame.draw.polygon(s, (255, 183, 30), _wedge(c, c, r, ra, ra + 2.5))
         elif feature == "color":
             pygame.draw.polygon(s, SQUARE_COLORS[sec], wedge)
         elif feature == "pattern":
             k = values.index(sec)
-            pygame.draw.polygon(s, style["sections"][k], wedge)
+            bg = style["sections"][k]
+            pygame.draw.polygon(s, bg, wedge)
             layer = pygame.Surface((S, S), pygame.SRCALPHA)
-            draw_pattern(layer, sec, (0, 0, S, S), style["ink"][k], unit=S / 60)
+            draw_pattern(layer, sec, (0, 0, S, S), style["ink"][k], unit=S / 60, bg=bg)
             mask = pygame.Surface((S, S), pygame.SRCALPHA)
             pygame.draw.polygon(mask, WHITE, wedge)
             layer.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
@@ -634,7 +636,7 @@ def dial(feature: str, size: int) -> pygame.Surface:
                     lx, ly = at(dist, ang)
                     out.blit(line, line.get_rect(center=(lx, ly)))
             else:
-                words = (fancy_text("WILD!", int(size * 0.11)) if sec == rules.WILD else
+                words = (fancy_text("WILD!", int(size * 0.11), WILD_WORD) if sec == rules.WILD else
                          _stack(fancy_text("SPIN-A", int(size * 0.075)),
                                 fancy_text("ZOO!", int(size * 0.1), RAINBOW[3:] + RAINBOW[:3])))
                 sym_size = 0.12
