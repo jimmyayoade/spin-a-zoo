@@ -389,15 +389,28 @@ def _player_symbol(s, color, cx, cy, r):
 
 @lru_cache(maxsize=32)
 def tile(color: str, size: int) -> pygame.Surface:
+    """A player's tile: a chunky rounded square, made to cover a board
+    square completely (what was under it no longer matters)."""
     s = canvas(size)
     S = size * SS
-    c = S / 2
-    pygame.draw.circle(s, (0, 0, 0, 70), (c, c + S * 0.04), S * 0.47)
-    pygame.draw.circle(s, INK, (c, c), S * 0.47)
-    pygame.draw.circle(s, WHITE, (c, c), S * 0.44)
-    pygame.draw.circle(s, TILE_COLORS[color], (c, c), S * 0.37)
-    pygame.draw.circle(s, shade(TILE_COLORS[color], 1.25), (c, c), S * 0.37, max(2, S // 40))
-    _player_symbol(s, color, c, c, S * 0.17)
+
+    def box(inset, col, width=0):
+        r = pygame.Rect(0, 0, S - inset * 2, S - inset * 2)
+        r.center = (S / 2, S / 2 - S * 0.015)
+        pygame.draw.rect(s, col, r, width, border_radius=int(r.w * 0.22))
+        return r
+    shadow = pygame.Rect(S * 0.02, S * 0.05, S * 0.96, S * 0.95)
+    pygame.draw.rect(s, (0, 0, 0, 70), shadow, border_radius=int(S * 0.21))
+    box(S * 0.02, INK)
+    box(S * 0.055, WHITE)
+    inner = box(S * 0.11, TILE_COLORS[color])
+    box(S * 0.11, shade(TILE_COLORS[color], 1.25), max(2, S // 40))
+    # a soft shine across the top, so it reads as a solid piece
+    shine = pygame.Surface(s.get_size(), pygame.SRCALPHA)
+    top = inner.inflate(-S * 0.1, -inner.h * 0.55).move(0, -inner.h * 0.2)
+    pygame.draw.ellipse(shine, (255, 255, 255, 45), top)
+    s.blit(shine, (0, 0))
+    _player_symbol(s, color, S / 2, S / 2 - S * 0.015, S * 0.21)
     return finish(s, size)
 
 

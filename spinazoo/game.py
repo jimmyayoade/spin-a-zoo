@@ -631,7 +631,7 @@ class GameScreen:
         legal = set(g.legal_moves()) if g.phase == PLACE and not self.busy() else None
         dim = pygame.Surface((L.cell, L.cell), pygame.SRCALPHA)
         pygame.draw.rect(dim, (20, 20, 30, 140), dim.get_rect(), border_radius=L.cell // 10)
-        ts = int(L.cell * 0.74)
+        ts = int(L.cell * 1.02)  # a tile covers its square
         for r in range(rules.SIZE):
             for c in range(rules.SIZE):
                 rect = L.cells[r][c]
@@ -646,7 +646,7 @@ class GameScreen:
                         t = self.drop[2].t(now)
                         size = int(ts * (1.5 - 0.5 * ease_out_back(t)))
                     img = art.tile(g.players[who].color, max(4, size))
-                    off = depth * L.cell * 0.04
+                    off = depth * L.cell * 0.03  # tiles below peek out underneath
                     if g.phase == WON and g.win_line and (r, c) in g.win_line and top:
                         i = g.win_line.index((r, c))
                         off -= abs(math.sin(now * 6 + i * 0.7)) * L.cell * 0.1
@@ -654,7 +654,7 @@ class GameScreen:
                 if dropping:
                     t = self.drop[2].t(now)
                     ring = pygame.Surface(rect.size, pygame.SRCALPHA)
-                    rad = ts * (0.45 + 0.35 * t)
+                    rad = ts * (0.5 + 0.3 * t)
                     pygame.draw.circle(ring, (255, 255, 255, int(200 * (1 - t))),
                                        (rect.w / 2, rect.h / 2), rad, max(2, L.gap // 2))
                     self.screen.blit(ring, rect)
@@ -678,13 +678,14 @@ class GameScreen:
                 t = L.font_small.render("Pick a bright square", True, art.WHITE, (40, 32, 48))
                 self.screen.blit(t, t.get_rect(midtop=(rect.centerx, rect.bottom + 4)))
         if g.phase == WON and g.win_line:
-            a = L.cells[g.win_line[0][0]][g.win_line[0][1]].center
-            b = L.cells[g.win_line[-1][0]][g.win_line[-1][1]].center
-            pygame.draw.line(self.screen, art.INK, a, b, int(L.cell * 0.16))
-            pygame.draw.line(self.screen, GOLD, a, b, int(L.cell * 0.1))
+            # gold frames round the winning tiles (they bounce too); no line
+            # across them, which would hide the players' symbols
+            pulse = 0.5 + 0.5 * math.sin(now * 6)
+            w = max(6, int(L.gap * (1.2 + 0.4 * pulse)))
             for r, c in g.win_line:
-                pygame.draw.rect(self.screen, GOLD, L.cells[r][c], max(5, L.gap),
-                                 border_radius=L.cell // 10)
+                rect = L.cells[r][c].inflate(w, w)
+                pygame.draw.rect(self.screen, art.INK, rect.inflate(4, 4), w + 4, border_radius=L.cell // 6)
+                pygame.draw.rect(self.screen, GOLD, rect, w, border_radius=L.cell // 6)
 
     def _draw_ripple(self, legal, now) -> None:
         """Usable squares flash one after another, spreading from the cursor."""
